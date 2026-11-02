@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#f3f4f6">
 <title>歩数ルートプランナー</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.0/dist/maplibre-gl.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap">
 <style>
@@ -226,11 +227,13 @@ details.more[open] summary{margin-bottom:8px}
     <div class="sec-title" id="othersTitle" hidden>ほかのルート</div>
     <div class="list" id="results"></div>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> ／ 施設・道路: Overpass API・FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ／ 施設・道路: Overpass API・FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。</div>
   </aside>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.1.3/leaflet-maplibre-gl.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -662,18 +665,28 @@ function renderFavs(){
     box.appendChild(ed); } }
 
 /* ---------- boot ---------- */
-const darkQ = window.matchMedia("(prefers-color-scheme: dark)");
-const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme==="dark" : darkQ.matches;
-function setTiles(){
-  const url = isDark() ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+// Base map: OpenFreeMap vector tiles (no API key), labels switched to Japanese. Plain OSM tiles if WebGL is unavailable.
+function osmFallback(){
   if(tiles) map.removeLayer(tiles);
-  tiles = L.tileLayer(url,{maxZoom:19, subdomains:"abcd", attribution:'© OpenStreetMap © CARTO'}).addTo(map); }
+  tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map); }
+function setTiles(){
+  if(!window.maplibregl || !L.maplibreGL) return osmFallback();
+  try{
+    tiles = L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron", attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'}).addTo(map);
+    const gl = tiles.getMaplibreMap();
+    let failed = false;
+    gl.on("error", e=>{ if(!failed && e && e.error && /style|Failed to fetch/i.test(String(e.error.message||""))) { failed=true; map.removeLayer(tiles); osmFallback(); } });
+    gl.on("style.load", ()=>{
+      for(const l of gl.getStyle().layers||[]){
+        if(l.type!=="symbol" || !(l.layout && l.layout["text-field"])) continue;
+        try{ gl.setLayoutProperty(l.id, "text-field", ["coalesce", ["get","name:ja"], ["get","name"]]); }catch(err){}
+      } });
+  }catch(e){ osmFallback(); } }
 
 function initMap(){
   map = L.map("map",{zoomControl:false, attributionControl:true}).setView([start.lat,start.lon],14);
   map.attributionControl.setPrefix(false).setPosition("topright");
   setTiles();
-  try{ darkQ.addEventListener("change", setTiles); }catch(e){}
   startMarker = L.marker([start.lat,start.lon],{draggable:true,title:"出発地",zIndexOffset:1000,
     icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:'<div class="start-pin"></div>'})}).addTo(map);
   startMarker.on("dragend", async e=>{ const p=e.target.getLatLng(); setStart(p.lat,p.lng); const n=await reverseName(p.lat,p.lng); if(n && Math.abs(start.lat-p.lat)<1e-9){ start.name=n; $("#startName").textContent="出発: "+n; } });
