@@ -289,6 +289,7 @@ const THEMES = {
   hill:   {name:"坂道トレーニング", color:"#c28a00", desc:"高低差の大きい方向へ", elev:"max"},
   flat:   {name:"フラット",         color:"#5c6878", desc:"坂の少ない方向へ", elev:"min"},
   station:{name:"駅ゴール",         color:"#dc3f78", desc:"ちょうどの距離の駅まで。帰りは電車", one:true},
+  free:   {name:"おまかせ",         color:"#3b5b7a", desc:"方向おまかせのシンプルなルート", free:true},
   bath:   {name:"銭湯ゴール",       color:"#0a9ea3", desc:"歩いた先でひとっ風呂", one:true},
 };
 const LOOP_ORDER = ["shop","sight","green","water","hill","flat"];
@@ -333,12 +334,18 @@ async function fetchJSON(url, opt={}, tries=2, ms=20000){
   throw new Error("取得に失敗しました"); }
 
 const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+// Try one server at a time (asking all at once used up the per-connection limit and caused refusals).
 async function overpass(q){
-  // ask all mirrors at once, use whichever answers first
-  const opt = {method:"POST", body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}};
-  const tryOne = async u => { const j = await fetchJSON(u, opt, 1, 40000); if(!j || !Array.isArray(j.elements)) throw new Error("bad"); return j; };
-  try{ return await Promise.any(OVERPASS.map(tryOne)); }
-  catch(e){ throw new Error("Overpass unavailable"); } }
+  const errs=[];
+  for(const u of OVERPASS){
+    const host=new URL(u).host.replace(/^overpass[.-]?/,"");
+    try{
+      const r = await fetchT(u, {method:"POST", body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}}, 25000);
+      if(!r.ok){ errs.push(`${host} ${r.status===429?"混雑(429)":r.status===504?"時間切れ(504)":"エラー"+r.status}`); continue; }
+      const j = await r.json(); if(!j || !Array.isArray(j.elements)){ errs.push(`${host} 応答不正`); continue; }
+      return j;
+    }catch(e){ errs.push(`${host} ${e && e.name==="AbortError" ? "タイムアウト" : "接続できない"}`); } }
+  const err = new Error("overpass"); err.detail = errs.join("、"); throw err; }
 
 let lastRoute = 0;
 async function osrm(llpts){
@@ -415,8 +422,9 @@ function cachedRaw(R){
 
 async function fetchRaw(R){
   const Rf = Math.min(Math.round(R+500), 6500), c = {lat:start.lat, lon:start.lon};
-  const a = `(around:${Rf},${c.lat.toFixed(6)},${c.lon.toFixed(6)})`;
-  const q = `[out:json][timeout:35];
+  const dLat = Rf/110540, dLon = Rf/(111320*Math.cos(c.lat*Math.PI/180));
+  const a = `(${(c.lat-dLat).toFixed(5)},${(c.lon-dLon).toFixed(5)},${(c.lat+dLat).toFixed(5)},${(c.lon+dLon).toFixed(5)})`; // bounding box: much cheaper for the server than a radius search
+  const q = `[out:json][timeout:25];
 (
  node["shop"]${a};
  node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court|ice_cream)$"]${a};
@@ -424,7 +432,7 @@ async function fetchRaw(R){
 out qt;
 (
  nwr["tourism"~"^(attraction|museum|viewpoint|gallery)$"]${a};
- nwr["historic"]${a};
+ nwr["historic"]["name"]${a};
  nwr["amenity"="place_of_worship"]${a};
  nwr["leisure"~"^(park|garden)$"]${a};
  nwr["amenity"="public_bath"]${a};
@@ -481,7 +489,7 @@ async function loadPOIs(P, R){
 
 function searchRadius(target){ return Math.min(mode==="loop" ? reachRadius(target)*1.5+300 : reachRadius(target)*1.25+300, 6000); }
 let prefetchTimer=null;
-function schedulePrefetch(){ // fetch the area quietly while the user is still choosing
+function schedulePrefetch(){ return; // disabled: background requests competed with the real search for the server's limit
   clearTimeout(prefetchTimer);
   prefetchTimer = setTimeout(()=>{ const R=searchRadius(targetMeters()); if(!cachedRaw(R)) getRaw(R).catch(()=>{}); }, 1800); }
 
@@ -503,6 +511,9 @@ function loopWaypoints(theta, r){ return [-45,0,45].map(d=>polar(theta+d, r)); }
 function bestDirection(D, th, elevGrid, oneWay, r){
   const dirs = [...Array(12)].map((_,i)=>i*30);
   let best=dirs[0], bv=-Infinity;
+  if(th.free){ // prefer the direction with the fewest roads already walked
+    let bt=0, bf=-1; for(const t of dirs){ const q=proj(start).ll(polar(t, r*0.8)); const f = walkedCells.has(cellKey(q.lat,q.lon)) ? 0 : 1 + Math.random(); if(f>bf){ bf=f; bt=t; } }
+    return {theta:bt, score:99}; }
   for(const t of dirs){
     let v;
     if(th.elev){
@@ -573,9 +584,27 @@ async function analyze(rt, D, P){
 
 
 /* ---------- main ---------- */
+let routeErr=null;
+function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
+
+// checks each outside service with a tiny request and lists what answered
+async function runDiagnostics(){
+  const st=$("#status"); st.className="status"; st.textContent="接続テスト中…";
+  const test = async (label, url, opt) => { const t0=Date.now();
+    try{ const r=await fetchT(url, opt||{}, 15000); return `${r.ok?"✓":"×"} ${label}：${r.ok?"OK":"エラー"+r.status}（${((Date.now()-t0)/1000).toFixed(1)}秒）`; }
+    catch(e){ return `× ${label}：${e && e.name==="AbortError"?"タイムアウト":"接続できない"}`; } };
+  const q = "data="+encodeURIComponent("[out:json][timeout:10];node(1);out;");
+  const post = {method:"POST", body:q, headers:{"Content-Type":"application/x-www-form-urlencoded"}};
+  const lines = [];
+  for(const u of OVERPASS) lines.push(await test("施設データ "+new URL(u).host, u, post));
+  const o=start, d=proj(start).ll({x:300,y:300});
+  lines.push(await test("ルート検索", `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${o.lon},${o.lat};${d.lon},${d.lat}?overview=false`));
+  lines.push(await test("標高", `https://api.open-meteo.com/v1/elevation?latitude=${o.lat}&longitude=${o.lon}`));
+  st.innerHTML = lines.map(esc).join("<br>") + "<br><small>このスクショを送ってもらえれば原因を特定できます。</small>"; }
+
 async function run(){
   const btn=$("#goBtn"), st=$("#status");
-  btn.disabled=true; clearResults(); st.className="status";
+  btn.disabled=true; clearResults(); st.className="status"; routeErr=null;
   const target = targetMeters(), P = proj(start);
   setWalkCtx(target);
   let order = mode==="loop" ? LOOP_ORDER : ONE_ORDER;
@@ -586,7 +615,11 @@ async function run(){
     const t0 = Date.now(), quick = !!cachedRaw(R);
     const tick = setInterval(()=>{ st.textContent = `周辺のお店・名所・川を読み込み中…（${Math.round((Date.now()-t0)/1000)}秒）`; }, 1000);
     st.textContent = quick ? "保存済みの周辺データを使います…" : "周辺のお店・名所・川を読み込み中…（初回のみ時間がかかります）";
-    let D; try{ D = await loadPOIs(P, R); } finally{ clearInterval(tick); }
+    let D, poiErr=null;
+    try{ D = await loadPOIs(P, R); }
+    catch(e){ poiErr = e.detail || "接続できない"; D = emptyData();
+      order = ["free","hill","flat"]; $("#switcher").innerHTML=""; showPlaceholders(order); }
+    finally{ clearInterval(tick); }
 
     st.textContent = "高低差を調べています…";
     const rr = reachRadius(target), gpts=[], meta=[];
@@ -605,13 +638,21 @@ async function run(){
         rt.info = await analyze(rt, D, P); rt.target = target;
         results.push(rt); drawRoute(rt); fillChip(rt);
         if(results.length===1) select(rt.key, false); else renderLists();
-      }catch(e){ console.warn(key, e); dropPlaceholder(key); }
+      }catch(e){ console.warn(key, e); routeErr = (e && e.message) || "接続できない"; dropPlaceholder(key); }
     }
-    st.textContent = results.length ? `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。` : "ルートを作れませんでした。出発地を変えるか、少し待って再試行してください。";
-    if(!results.length){ st.className="status err"; $("#switcher").hidden=true; }
+    if(poiErr && results.length){
+      st.className="status err";
+      st.innerHTML = `お店・名所のデータのサーバーにつながらなかったため、おまかせ・坂道・フラットのルートだけ作りました。<br><small>詳細: ${esc(poiErr)}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`;
+    } else if(results.length){
+      st.textContent = `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。`;
+    } else {
+      st.className="status err"; $("#switcher").hidden=true;
+      st.innerHTML = `ルートを作れませんでした。<br><small>詳細: ${esc([poiErr&&("施設データ "+poiErr), routeErr&&("ルート検索 "+routeErr)].filter(Boolean).join(" ／ ")||"不明")}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`; }
+    const dg = st.querySelector("[data-diag]"); if(dg) dg.onclick = runDiagnostics;
   }catch(e){
     console.error(e);
-    st.textContent = "データの取得に失敗しました（無料サーバーの混雑）。少し待ってから再試行するか、歩数を減らしてみてください。";
+    st.innerHTML = `予期しないエラーで止まりました。<br><small>詳細: ${esc(String(e && e.message || e))}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`;
+    const dg = st.querySelector("[data-diag]"); if(dg) dg.onclick = runDiagnostics;
     st.className="status err"; $("#switcher").hidden=true;
   }finally{ btn.disabled=false; } }
 
@@ -826,9 +867,9 @@ function init(){
   ["#steps","#minutes"].forEach(id=>$(id).addEventListener("input", ()=>{ updateEst(); savePrefs(); schedulePrefetch(); }));
   document.querySelectorAll("#inputMode button").forEach(b=>b.onclick=()=>{ setInputMode(b.dataset.im); clearResults(); savePrefs(); schedulePrefetch(); });
   $("#depart").addEventListener("input", ()=>{ departEdited = !!$("#depart").value; $("#nowBtn").setAttribute("aria-pressed", !departEdited); updateTimeCtx(); clearResults(); });
-  $("#nowBtn").onclick=()=>{ departEdited=false; $("#depart").value=hhmm(new Date()); $("#nowBtn").setAttribute("aria-pressed", true); updateTimeCtx(); clearResults(); };
-  $("#depart").value = hhmm(new Date());
-  setInterval(()=>{ if(!departEdited){ $("#depart").value=hhmm(new Date()); updateTimeCtx(); } }, 30000);
+  $("#nowBtn").onclick=()=>{ departEdited=false; $("#depart").value=hhmm2(new Date()); $("#nowBtn").setAttribute("aria-pressed", true); updateTimeCtx(); clearResults(); };
+  $("#depart").value = hhmm2(new Date());
+  setInterval(()=>{ if(!departEdited){ $("#depart").value=hhmm2(new Date()); updateTimeCtx(); } }, 30000);
   $("#showWalked").addEventListener("change", ()=>{ drawWalked(); });
   const setMode = m => { mode=m; $("#mLoop").setAttribute("aria-pressed", m==="loop"); $("#mOne").setAttribute("aria-pressed", m==="one"); clearResults(); updateEst(); savePrefs(); schedulePrefetch(); };
   window._setMode = setMode;
@@ -897,6 +938,7 @@ function applyUrl(){
 let departEdited=false;
 let walkCtx = {depart:new Date(), mid:new Date(), arrive:new Date(), dark:false};
 const hhmm = d => `${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`;
+const hhmm2 = d => `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; // <input type=time> needs 09:05
 function departDate(){
   const now=new Date(); if(!departEdited || !$("#depart").value) return now;
   const [h,m]=$("#depart").value.split(":").map(Number); const d=new Date(now); d.setHours(h,m,0,0);
