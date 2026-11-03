@@ -174,6 +174,7 @@ details.more[open] summary{margin-bottom:8px}
 .leaflet-control-attribution{font-size:9px}
 .start-pin{width:22px;height:22px;border-radius:50%;background:var(--btn);border:4px solid var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.35)}
 .wp-pin{width:22px;height:22px;border-radius:50%;background:var(--c);color:#fff;border:2px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.35);display:grid;place-items:center;font:700 11px/1 var(--f-num)}
+.spot-pin{width:20px;height:20px;border-radius:50%;background:var(--surface);color:var(--c);border:2px solid var(--c);display:grid;place-items:center;font:700 10px/1 var(--f-body);box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .stops{display:flex;flex-direction:column;gap:6px}
 .stops .lbl{font-size:10px;letter-spacing:.06em;color:var(--muted)}
 .stops ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
@@ -217,9 +218,11 @@ details.more[open] summary{margin-bottom:8px}
       <div class="seg seg-sm" role="group" aria-label="指定のしかた" id="inputMode">
         <button type="button" data-im="steps" aria-pressed="true">歩数で指定</button>
         <button type="button" data-im="time" aria-pressed="false">時間で指定</button>
+        <button type="button" data-im="kcal" aria-pressed="false">カロリーで指定</button>
       </div>
       <div>
         <div class="steps-row" id="stepsRow"><input id="steps" class="big-in" type="number" inputmode="numeric" min="500" max="40000" step="500" value="8000" aria-label="歩数"><span>歩</span></div>
+        <div class="steps-row" id="kcalRow" hidden><input id="kcalIn" class="big-in" type="number" inputmode="numeric" min="20" max="2000" step="10" value="200" aria-label="消費カロリー（kcal）"><span>kcal</span></div>
         <div class="steps-row" id="minRow" hidden><input id="minutes" class="big-in" type="number" inputmode="numeric" min="5" max="300" step="5" value="45" aria-label="歩く時間（分）"><span>分</span></div>
         <div class="est num" id="est"></div>
       </div>
@@ -277,7 +280,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-10</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-11</div>
   </aside>
 </div>
 
@@ -371,7 +374,12 @@ async function elevations(ll){ // up to 100 points
 const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v)&&v>0 ? v : d; };
 const WALK_MPM = 80; // walking speed, metres per minute (4.8 km/h)
 let inputMode = "steps";
-const targetMeters = () => inputMode==="time" ? num("#minutes",45)*WALK_MPM : num("#steps",8000)*num("#stride",70)/100;
+// kcal → metres: inverse of kcal() on flat ground (1.05 × 3.5 METs × hours × kg at 4.8 km/h)
+const targetMeters = () => inputMode==="time" ? num("#minutes",45)*WALK_MPM
+  : inputMode==="kcal" ? num("#kcalIn",200)*4800/(1.05*3.5*num("#weight",65))
+  : num("#steps",8000)*num("#stride",70)/100;
+const BEER=200, ONIGIRI=180; // 中ジョッキ(約500ml) / おにぎり1個 の目安kcal
+const equiv = k => `ビール中ジョッキ${(k/BEER).toFixed(1)}杯・おにぎり${(k/ONIGIRI).toFixed(1)}個ぶん`;
 const fmt = n => Math.round(n).toLocaleString("ja-JP");
 function kcal(m, ascent){ const kg=num("#weight",65); const h=m/1000/4.8; return 1.05*3.5*h*kg + ascent*kg*9.8/4184/0.25; }
 function reachRadius(D){ return mode==="loop" ? D/4.4 : D/1.25; }
@@ -380,8 +388,10 @@ function updateEst(){
   const D = targetMeters();
   $("#est").textContent = inputMode==="time"
     ? `約${fmt(D*100/num("#stride",70))}歩 ・ ${(D/1000).toFixed(1)} km ・ ${fmt(kcal(D,0))} kcal`
+    : inputMode==="kcal"
+    ? `約${fmt(D*100/num("#stride",70))}歩 ・ ${(D/1000).toFixed(1)} km ・ 約${Math.round(D/WALK_MPM)}分 ／ ${equiv(num("#kcalIn",200))}（体重${num("#weight",65)}kgで計算）`
     : `${(D/1000).toFixed(1)} km ・ 約${Math.round(D/WALK_MPM)}分 ・ ${fmt(kcal(D,0))} kcal`;
-  const v = Math.round(num(inputMode==="time"?"#minutes":"#steps",0));
+  const v = Math.round(num(inputMode==="time"?"#minutes":inputMode==="kcal"?"#kcalIn":"#steps",0));
   document.querySelectorAll("#presets .pchip").forEach(b=>b.setAttribute("aria-pressed", +b.dataset.v===v));
   updateTimeCtx();
   if(map) reachCircle.setLatLng([start.lat,start.lon]).setRadius(reachRadius(D));
@@ -411,8 +421,9 @@ function classify(t){
   return null; }
 
 /* Area data is fetched once per area and kept on the phone for a week, so later searches nearby skip Overpass. */
-const CATS=["shop","sight","green","water","bath","station"];
-const POI_STORE="walkplanner.poi.v3", POI_TTL=7*864e5, POI_MAX=6;
+const CATS=["shop","sight","green","water","bath","station","street"];
+const STREET_RE = /(商店街|銀座|商店会|仲見世|横丁|ストリート|通り商店)/;
+const POI_STORE="walkplanner.poi.v4", POI_TTL=7*864e5, POI_MAX=6;
 let poiMem=[], inflight=null;
 function readStore(){ try{ const a=JSON.parse(localStorage.getItem(POI_STORE)||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 function writeStore(list){
@@ -493,6 +504,7 @@ const SHOP_CLASS = new Set(["shop","grocery","clothing_store","alcohol_shop","ba
 const SIGHT_CLASS = new Set(["place_of_worship","attraction","museum","art_gallery","monument","castle","historic","viewpoint"]);
 function mvtShopType(cls, sub){
   if(sub==="convenience") return 4; if(sub==="supermarket") return 5; if(cls==="fast_food"||sub==="fast_food") return 6;
+  if(cls==="bakery"||/^(bakery|confectionery|pastry)$/.test(sub)) return 7;
   if(cls==="restaurant"||cls==="ice_cream"||sub==="food_court") return 1; if(cls==="cafe") return 2; if(cls==="bar"||cls==="beer") return 3; return 0; }
 
 async function fetchRawTiles(R){
@@ -522,9 +534,16 @@ async function fetchRawTiles(R){
       else if(SHOP_CLASS.has(cls)){ cat="shop"; code = mvtShopType(cls, sub); }
       if(!cat) continue;
       const pt = mvtLines(poi, F, x, y, MVT_Z)[0]; if(!pt||!pt[0]) continue;
-      const lat=r5(pt[0].lat), lon=r5(pt[0].lon), name = cat==="shop" ? "" : (pr["name:ja"]||pr.name||"");
+      const full = pr["name:ja"]||pr.name||"";
+      const lat=r5(pt[0].lat), lon=r5(pt[0].lon), name = cat==="shop" && code!==2 && code!==7 ? "" : full; // keep names of cafes and bakeries (寄り道スポット)
       const key = cat+lat+","+lon; if(seen.has(key)) continue; seen.add(key);
+      if(full && STREET_RE.test(full)) items.push([6, lat, lon, full]);
       items.push([CATS.indexOf(cat), lat, lon, name, code]); }
+    const tn = layers.transportation_name;   // named streets: pick out shopping streets (〜商店街, 〜銀座 …)
+    if(tn) for(const F of tn.feats){
+      const pr = mvtProps(tn, F), nm = pr["name:ja"]||pr.name||""; if(!nm || !STREET_RE.test(nm)) continue;
+      for(const line of mvtLines(tn, F, x, y, MVT_Z)){ if(line.length<2) continue; const Pc=proj(line[0]);
+        for(const sp of resample(line.map(p=>Pc.xy(p)), 40)){ const l=Pc.ll(sp); items.push([6, r5(l.lat), r5(l.lon), nm]); } } }
     const ww = layers.waterway;
     if(ww) for(const F of ww.feats){
       const pr = mvtProps(ww, F); if(!/^(river|canal)$/.test(pr.class||"")) continue;
@@ -594,11 +613,11 @@ function getRaw(R){
 
 async function loadPOIs(P, R){
   const raw = await getRaw(R);
-  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[]};
+  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[]};
   const lim = R + 300, mid = walkCtx.mid, arrive = walkCtx.arrive;
   for(const it of raw.items){
     const q = P.xy({lat:it[1], lon:it[2]}); if(Math.hypot(q.x,q.y)>lim) continue;
-    const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||""};
+    const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||"", cat};
     if(cat==="shop"){ cats.shopAll.push(p); if(isOpen(p.oh, SHOP_HOURS[p.code], mid)) cats.shop.push(p); continue; }
     if(cat==="sight" && p.code===1 && !isOpen(p.oh, [[600,1020]], mid)) continue;   // museums: 10-17 unless tagged
     if(cat==="bath" && !isOpen(p.oh, [[900,1410]], arrive)) continue;               // sento: 15:00-23:30 unless tagged
@@ -632,8 +651,10 @@ function snap(D, cat, q, win, preferNamed){
 
 function loopWaypoints(theta, r){ return [-45,0,45].map(d=>polar(theta+d, r)); }
 
-function bestDirection(D, th, elevGrid, oneWay, r){
-  const dirs = [...Array(12)].map((_,i)=>i*30);
+function bestDirection(D, th, elevGrid, oneWay, r, exclude=[]){
+  const angDiff = (a,b) => Math.abs(((a-b+540)%360)-180);
+  const dirs = [...Array(12)].map((_,i)=>i*30).filter(t=>exclude.every(e=>angDiff(t,e)>=60));
+  if(!dirs.length) return {theta:0, score:-Infinity};
   let best=dirs[0], bv=-Infinity;
   if(th.free){ // prefer the direction with the fewest roads already walked
     let bt=0, bf=-1; for(const t of dirs){ const q=proj(start).ll(polar(t, r*0.8)); const f = walkedCells.has(cellKey(q.lat,q.lon)) ? 0 : 1 + Math.random(); if(f>bf){ bf=f; bt=t; } }
@@ -648,19 +669,20 @@ function bestDirection(D, th, elevGrid, oneWay, r){
     } else {
       const O={x:0,y:0};
       const pts = oneWay ? [O, polar(t,r)] : [O, ...loopWaypoints(t,r), O];
-      v = corridorScore(D, th.cat, pts);
+      v = corridorScore(D, th.cat, pts) + (th.cat==="shop" ? 4*corridorScore(D, "street", pts) : 0);
     }
     if(v>bv){ bv=v; best=t; } }
   return {theta:best, score:bv}; }
 
-async function designRoute(key, D, P, target, elevGrid){
+async function designRoute(key, D, P, target, elevGrid, opt={}){
   const th = THEMES[key]; const oneWay = mode==="one";
-  let r = reachRadius(target), best=null, theta=0, fixedEnd=null, used=new Set();
+  let r = reachRadius(target), best=null, theta=0, fixedEnd=null, used=new Set(opt.exEnds||[]);
 
   if(key==="station"||key==="bath"){
     const list = D.cats[key]; if(!list.length) return null; }
-  else { const bd = bestDirection(D, th, elevGrid, oneWay, r); theta = bd.theta;
-    if(!th.elev && bd.score<3) return null; }
+  else { const bd = bestDirection(D, th, elevGrid, oneWay, r, opt.exclude||[]); theta = bd.theta;
+    if(bd.score===-Infinity) return null;
+    if(!th.elev && !th.free && bd.score<3) return null; }
 
   for(let it=0; it<3; it++){
     let wps;
@@ -675,6 +697,7 @@ async function designRoute(key, D, P, target, elevGrid){
     } else {
       wps = loopWaypoints(theta, r).map(q=>snap(D, th.cat, q, Math.max(200,r*0.3), key==="sight"));
     }
+    if(key==="shop") wps = wps.map(p=>snapStreet(D, p, Math.max(200, r*0.3)));
     wps = wps.map(p=>toNamedStop(D, p, key));
     const pts = [{x:0,y:0}, ...wps, ...(oneWay?[]:[{x:0,y:0}])];
     const res = await osrm(pts.map(p=>P.ll(p)));
@@ -686,12 +709,18 @@ async function designRoute(key, D, P, target, elevGrid){
   if(!best) return null;
   return {key, ...best}; }
 
+// a shop stop moves onto a nearby shopping street when there is one (so the stop is called e.g. "○○商店街")
+function snapStreet(D, p, win){
+  let best=null, bd=1e9; for(const q of D.grids.street.near(p.x,p.y,win)){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
+  return best ? {x:best.x, y:best.y, poi:best} : p; }
+
 /* ---------- stops handed to Google Maps ---------- */
 // Move an unnamed stop (e.g. the middle of a shop cluster) onto the nearest named spot within 250 m,
 // so Google Maps can list it by name instead of a street address.
+const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop");
 function toNamedStop(D, p, key){
-  if(p.poi && p.poi.name) return p;
-  const order = key==="green" ? ["green","sight","station"] : ["sight","green","station"];
+  if(isNamedStop(p)) return p;
+  const order = key==="green" ? ["green","sight","station"] : key==="shop" ? ["street","sight","green","station"] : ["sight","green","station"];
   for(const cat of order){
     let best=null, bd=1e9;
     for(const q of D.grids[cat].near(p.x,p.y,250)) if(q.name && q.name.length>1){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
@@ -717,7 +746,7 @@ async function prepareGoogleStops(rt){
 // so its stops match what the card lists; each is labelled with its own name or the nearest named place.
 function stopNames(rt, D){
   return rt.wps.map((p,i)=>{
-    if(p.poi && p.poi.name) return p.poi.name;
+    if(isNamedStop(p)) return p.poi.name;
     let best=null, bd=1e9;
     for(const cat of ["sight","green","station"]) for(const q of D.grids[cat].near(p.x,p.y,220)) if(q.name){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
     if(best) return best.name+"付近";
@@ -726,22 +755,40 @@ function stopNames(rt, D){
     return null; }); }
 function stopsFor(rt){ // [{lat,lon,label,named}] in walking order; the last one is the destination for one-way routes
   const P=proj(start), list=(rt.info && rt.info.allStops) || rt.wps;
-  return list.map((p,i)=>{ const l=P.ll(p); const named = !!(p.poi && p.poi.name);
+  return list.map((p,i)=>{ const l=P.ll(p); const named = isNamedStop(p);
     return {lat:l.lat, lon:l.lon, named, label: named ? p.poi.name : (p.label || `経由地${i+1}`)}; }); }
+// 寄り道スポット: named places right beside the line, shown as small pins on the map
+function spotKind(p, cat){
+  if(cat==="street") return {g:"街", c:"#ef6a2f"};
+  if(cat==="green") return {g:"園", c:"#23995d"};
+  if(cat==="shop") return p.code===7 ? {g:"パ", c:"#b7791f"} : {g:"茶", c:"#8a5a44"};
+  if(/神社|宮|稲荷|八幡/.test(p.name)) return {g:"神", c:"#c0392b"};
+  if(/寺|院|堂|不動/.test(p.name)) return {g:"寺", c:"#7d5ba6"};
+  if(p.code===1) return {g:"館", c:"#2f6fb0"};
+  return {g:"名", c:"#9351d6"}; }
+function spotsAlong(samples, sights, greens, shops, streets){
+  const out=[], seenName=new Set();
+  const add = (p, cat) => { if(!p.name || seenName.has(p.name)) return; seenName.add(p.name); const k=spotKind(p,cat); out.push({x:p.x, y:p.y, name:p.name, g:k.g, c:k.c, i:p._i}); };
+  sights.forEach(p=>add(p,"sight")); greens.filter(p=>p.name).forEach(p=>add(p,"green"));
+  shops.filter(p=>p.name && (p.code===2||p.code===7)).forEach(p=>add(p,"shop"));
+  const st=new Map(); streets.forEach(p=>{ if(!st.has(p.name)) st.set(p.name,p); }); [...st.values()].forEach(p=>add(p,"street"));
+  return out.sort((a,b)=>a.i-b.i).slice(0,40); }
 // Stops for Google Maps: the points the route was built through, plus named spots the line passes
 // (shrines, sights, parks right beside it), in walking order, at least ~250 m apart, at most 8 waypoints.
 const MAX_STOPS = 8;
-function pickStops(rt, samples, sights, greens, baseNames){
+function pickStops(rt, samples, sights, greens, baseNames, streets=[]){
   const near = p => { let bi=0, bd=1e9; for(let i=0;i<samples.length;i++){ const d=dist(p,samples[i]); if(d<bd){ bd=d; bi=i; } } return {pos:bi, off:bd}; };
   const oneWay = mode==="one", N = samples.length, GAP = 10; // 10 samples = 250 m
   const base = rt.wps.map((p,i)=>({...p, pos:near(p).pos, label:baseNames[i]||null}));
   const end = oneWay ? base.pop() : null;
-  const chosen = [...base], used = new Set(base.filter(b=>b.poi&&b.poi.name).map(b=>b.poi.name));
+  const chosen = [...base], used = new Set(base.filter(isNamedStop).map(b=>b.poi.name));
+  const firstOfStreet = new Map(); for(const p of streets) if(p.name && !firstOfStreet.has(p.name)) firstOfStreet.set(p.name, p);
   const cands = [
+    ...[...firstOfStreet.values()].map(p=>({p, pr:2.5})),
     ...sights.filter(p=>p.name).map(p=>({p, pr:p.code===1?3:2})),
     ...greens.filter(p=>p.name).map(p=>({p, pr:1})) ]
     .map(c=>({...c, ...near(c.p)}))
-    .filter(c=>c.off <= (c.pr===1 ? 70 : 50))
+    .filter(c=>c.off <= (c.pr===1 ? 70 : c.pr===2.5 ? 30 : 50))
     .sort((a,b)=>b.pr-a.pr || a.off-b.off);
   for(const c of cands){
     if(chosen.length >= MAX_STOPS) break;
@@ -759,26 +806,28 @@ async function analyze(rt, D, P){
   const samples = resample(xy, 25);
   const along = (cat, rad) => { const s=new Set(); samples.forEach((q,i)=>{ for(const p of D.grids[cat].near(q.x,q.y,rad)) if(!s.has(p)){ s.add(p); p._i=i; } }); return [...s].sort((a,b)=>a._i-b._i); };
   const shops = along("shop",35), shopsAll = along("shopAll",35), sights = along("sight",45), greens = along("green",120);
-  const allStops = pickStops(rt, samples, sights, greens, stopNames(rt, D));
+  const streets = along("street",30);
+  const allStops = pickStops(rt, samples, sights, greens, stopNames(rt, D), streets);
+  const spots = spotsAlong(samples, sights, greens, along("shop",30), streets);
   const cells = new Set(samples.map(q=>{ const l=P.ll(q); return cellKey(l.lat,l.lon); }));
 
   const nearWater = samples.filter(q=>D.grids.water.near(q.x,q.y,100).length).length/samples.length;
   const named = [];
-  for(const p of [...sights.filter(p=>p.name), ...greens.filter(p=>p.name)].sort((a,b)=>a._i-b._i)) if(!named.includes(p.name)) named.push(p.name);
+  for(const p of [...streets, ...sights.filter(p=>p.name), ...greens.filter(p=>p.name)].sort((a,b)=>a._i-b._i)) if(p.name && !named.includes(p.name)) named.push(p.name);
   // elevation profile
   const n = Math.min(100, Math.max(10, Math.round(rt.dist/60)));
   const L = polyLen(xy), prof=[];
   const pts = resample(xy, L/(n-1)).slice(0,100).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   let asc=0; for(let i=1;i<el.length;i++){ const d=el[i]-el[i-1]; if(d>0) asc+=d; }
-  return {allStops, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
+  return {allStops, spots, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
 
 /* ---------- main ---------- */
-let routeErr=null;
-function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
+let routeErr=null, lastRun=null;
+function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
 
 // checks each outside service with a tiny request and lists what answered
 async function runDiagnostics(){
@@ -821,6 +870,7 @@ async function run(){
     let elevGrid=[]; try{ const e = await elevations([start,...gpts]); elevGrid = meta.map((m,i)=>({...m, e:e[i+1]})); elevGrid.start=e[0]; }
     catch(e){ elevGrid=null; }
 
+    lastRun = {D, P, target, elevGrid};
     let done=0;
     for(const key of order){
       const th=THEMES[key]; done++;
@@ -850,10 +900,25 @@ async function run(){
     st.className="status err"; $("#switcher").hidden=true;
   }finally{ btn.disabled=false; } }
 
+/* ---------- 別の案: same theme, another direction (or another station / bath) ---------- */
+async function altRoute(rt, btn){
+  if(!lastRun) return;
+  const st=$("#status"); btn.disabled=true; btn.textContent="作成中…";
+  try{
+    const ex = rt.excl || [rt.theta], exEnds = rt.exEnds || (rt.endPoi?[rt.endPoi]:[]);
+    const nr = await designRoute(rt.key, lastRun.D, lastRun.P, lastRun.target, lastRun.elevGrid, {exclude:ex, exEnds});
+    if(!nr){ toast("この条件では、これ以上の別案は見つかりませんでした"); renderLists(); return; }
+    nr.info = await analyze(nr, lastRun.D, lastRun.P); nr.target = lastRun.target;
+    nr.excl = [...ex, nr.theta]; nr.exEnds = [...exEnds, ...(nr.endPoi?[nr.endPoi]:[])]; nr.alt = (rt.alt||1)+1;
+    const i = results.indexOf(rt); if(i<0) return;
+    results[i] = nr; map.removeLayer(routeLayers[rt.key]); drawRoute(nr); fillChip(nr); select(nr.key, false);
+    toast(`別案${nr.alt}を作りました`);
+  }catch(e){ toast("別案を作れませんでした（ルート検索の混雑）"); renderLists(); } }
+
 /* ---------- rendering ---------- */
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const stepsOf = rt => rt.dist*100/num("#stride",70);
-const titleOf = rt => THEMES[rt.key].name + (rt.endPoi && rt.endPoi.name ? `：${rt.endPoi.name}` : "");
+const titleOf = rt => THEMES[rt.key].name + (rt.endPoi && rt.endPoi.name ? `：${rt.endPoi.name}` : "") + (rt.alt ? `（別案${rt.alt}）` : "");
 
 function clearResults(){
   results=[]; selected=null; $("#detail").innerHTML=""; $("#results").innerHTML=""; $("#othersTitle").hidden=true;
@@ -876,7 +941,8 @@ function keyMetric(rt){ const i=rt.info;
 function fillChip(rt){
   const b=$(`#switcher [data-key="${rt.key}"]`); if(!b) return;
   b.classList.remove("wait"); b.disabled=false;
-  const big = inputMode==="time" ? `${Math.round(rt.dist/WALK_MPM)}<small>分</small>` : `${fmt(stepsOf(rt))}<small>歩</small>`;
+  const big = inputMode==="time" ? `${Math.round(rt.dist/WALK_MPM)}<small>分</small>`
+    : inputMode==="kcal" ? `${fmt(kcal(rt.dist, rt.info?rt.info.asc:0))}<small>kcal</small>` : `${fmt(stepsOf(rt))}<small>歩</small>`;
   b.innerHTML=`<b>${esc(THEMES[rt.key].name)}</b><span class="big num">${big}</span><span class="sub">${esc(rt.info?keyMetric(rt):"読み込み中")}</span>`;
   b.onclick=()=>select(rt.key, false); }
 
@@ -907,6 +973,7 @@ function detailHTML(rt){
   const logged = isLogged(rt);
   const tags = i ? `
     <div class="tags">
+      ${i.spots&&i.spots.length?`<span class="tag">寄り道スポット <span class="num">${i.spots.length}</span></span>`:""}
       <span class="tag">営業中のお店 <span class="num">${i.shops}</span></span><span class="tag">名所 <span class="num">${i.sights}</span></span><span class="tag">公園 <span class="num">${i.greens}</span></span>
       <span class="tag">水辺 <span class="num">${Math.round(i.water*100)}%</span></span><span class="tag">登り計 <span class="num">${Math.round(i.asc)}m</span></span>
       ${walkLog.length?`<span class="tag">初めての道 <span class="num">${freshPct(i.cells)}%</span></span>`:""}
@@ -927,6 +994,7 @@ function detailHTML(rt){
     <div class="stops"><span class="lbl">Googleマップの経由地</span>${stopsHTML(rt)}</div>
     <a class="nav" href="${gmapsLink(rt)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 21 3l-8 18-2-8-8-2Z"/></svg>Googleマップでナビ開始</a>
     <div class="btn-row">
+      ${lastRun && !rt.shared ? `<button type="button" class="btn2" data-act="alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>別の案</button>` : ""}
       <button type="button" class="btn2" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>共有</button>
       <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み（取り消す）":"このルートを歩いた"}</button>
     </div>
@@ -941,14 +1009,15 @@ function renderLists(){
   const d=$("#detail"); d.innerHTML="";
   if(cur){ const c=document.createElement("section"); c.className="card"; c.style.setProperty("--c",THEMES[cur.key].color); c.innerHTML=detailHTML(cur); d.appendChild(c);
     c.querySelector('[data-act="share"]').onclick=()=>shareRoute(cur);
-    c.querySelector('[data-act="walked"]').onclick=()=>{ toggleLogged(cur); renderLists(); }; }
+    c.querySelector('[data-act="walked"]').onclick=()=>{ toggleLogged(cur); renderLists(); };
+    const ab=c.querySelector('[data-act="alt"]'); if(ab) ab.onclick=()=>altRoute(cur, ab); }
   const list=$("#results"); list.innerHTML="";
   const others = results.filter(r=>r.key!==selected);
   $("#othersTitle").hidden = !others.length;
   for(const rt of others){
     const c=document.createElement("button"); c.type="button"; c.className="card mini"; c.style.setProperty("--c",THEMES[rt.key].color);
     const dev=(rt.dist-rt.target)/rt.target*100;
-    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${inputMode==="time"?Math.round(rt.dist/WALK_MPM)+"分":fmt(stepsOf(rt))+"歩"}</span><span class="dev num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`;
+    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${inputMode==="time"?Math.round(rt.dist/WALK_MPM)+"分":inputMode==="kcal"?fmt(kcal(rt.dist,rt.info?rt.info.asc:0))+"kcal":fmt(stepsOf(rt))+"歩"}</span><span class="dev num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`;
     c.onclick=()=>{ select(rt.key, true); };
     list.appendChild(c); } }
 
@@ -970,7 +1039,10 @@ function select(key, scrollToMap){
   const rt = results.find(r=>r.key===key); if(!rt) return;
   poiLayer.clearLayers();
   const P=proj(start);
-  const st = stopsFor(rt);
+  const st = stopsFor(rt), stopNamesSet = new Set(st.map(s=>s.label));
+  if(rt.info && rt.info.spots) for(const sp of rt.info.spots){ if(stopNamesSet.has(sp.name)) continue; const l=P.ll(sp);
+    L.marker([l.lat,l.lon],{icon:L.divIcon({className:"",iconSize:[20,20],iconAnchor:[10,10],html:`<div class="spot-pin" style="--c:${sp.c}">${sp.g}</div>`})})
+      .bindTooltip(sp.name).addTo(poiLayer); }
   st.forEach((s,i)=>{ const lab = mode==="one" && i===st.length-1 ? "着" : String(i+1);
     L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div class="wp-pin" style="--c:${THEMES[key].color}">${lab}</div>`}),interactive:true})
       .bindTooltip(s.label).addTo(poiLayer); });
@@ -1057,7 +1129,7 @@ function initMap(){
 }
 
 function init(){
-  ["#steps","#minutes"].forEach(id=>$(id).addEventListener("input", ()=>{ updateEst(); savePrefs(); schedulePrefetch(); }));
+  ["#steps","#minutes","#kcalIn"].forEach(id=>$(id).addEventListener("input", ()=>{ updateEst(); savePrefs(); schedulePrefetch(); }));
   document.querySelectorAll("#inputMode button").forEach(b=>b.onclick=()=>{ setInputMode(b.dataset.im); clearResults(); savePrefs(); schedulePrefetch(); });
   $("#depart").addEventListener("input", ()=>{ departEdited = !!$("#depart").value; $("#nowBtn").setAttribute("aria-pressed", !departEdited); updateTimeCtx(); clearResults(); });
   $("#nowBtn").onclick=()=>{ departEdited=false; $("#depart").value=hhmm2(new Date()); $("#nowBtn").setAttribute("aria-pressed", true); updateTimeCtx(); clearResults(); };
@@ -1100,19 +1172,19 @@ function locate(then){
 
 /* ---------- steps / time input, saved prefs, links ---------- */
 function setInputMode(m){
-  inputMode = m==="time" ? "time" : "steps";
+  inputMode = m==="time"||m==="kcal" ? m : "steps";
   document.querySelectorAll("#inputMode button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.im===inputMode));
-  $("#stepsRow").hidden = inputMode!=="steps"; $("#minRow").hidden = inputMode!=="time";
+  $("#stepsRow").hidden = inputMode!=="steps"; $("#minRow").hidden = inputMode!=="time"; $("#kcalRow").hidden = inputMode!=="kcal";
   const box=$("#presets"); box.innerHTML="";
-  const vals = inputMode==="time" ? [15,30,45,60,90] : [3000,5000,8000,10000,15000];
-  vals.forEach(v=>{ const b=document.createElement("button"); b.type="button"; b.className="pchip"; b.dataset.v=v; b.textContent = inputMode==="time" ? v+"分" : v.toLocaleString();
-    b.onclick=()=>{ $(inputMode==="time"?"#minutes":"#steps").value=v; updateEst(); clearResults(); savePrefs(); schedulePrefetch(); }; box.appendChild(b); });
+  const vals = inputMode==="time" ? [15,30,45,60,90] : inputMode==="kcal" ? [100,150,200,300,400] : [3000,5000,8000,10000,15000];
+  vals.forEach(v=>{ const b=document.createElement("button"); b.type="button"; b.className="pchip"; b.dataset.v=v; b.textContent = inputMode==="time" ? v+"分" : inputMode==="kcal" ? v+"kcal" : v.toLocaleString();
+    b.onclick=()=>{ $(inputMode==="time"?"#minutes":inputMode==="kcal"?"#kcalIn":"#steps").value=v; updateEst(); clearResults(); savePrefs(); schedulePrefetch(); }; box.appendChild(b); });
   updateEst(); }
 const PREF_KEY="walkplanner.prefs";
-function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify({inputMode, steps:$("#steps").value, minutes:$("#minutes").value, mode})); }catch(e){} }
+function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify({inputMode, steps:$("#steps").value, minutes:$("#minutes").value, kcal:$("#kcalIn").value, mode})); }catch(e){} }
 function loadPrefs(){
   try{ const p=JSON.parse(localStorage.getItem(PREF_KEY)||"null"); if(!p) return;
-    if(p.steps) $("#steps").value=p.steps; if(p.minutes) $("#minutes").value=p.minutes;
+    if(p.steps) $("#steps").value=p.steps; if(p.minutes) $("#minutes").value=p.minutes; if(p.kcal) $("#kcalIn").value=p.kcal;
     if(p.mode==="one") window._setMode("one");
     setInputMode(p.inputMode); }catch(e){} }
 // ?steps=6000 or ?min=30, &mode=one, &here=1 (start from current location), &auto=1 (search right away), ?r=… (shared route)
@@ -1167,7 +1239,7 @@ function shopType(t){
   if(a==="cafe") return 2;
   if(a==="bar"||a==="pub") return 3;
   return 0; }
-const SHOP_HOURS = {0:[[600,1200]], 1:[[690,1320]], 2:[[480,1200]], 3:[[1020,1560]], 4:[[0,1440]], 5:[[540,1320]], 6:[[420,1380]]};
+const SHOP_HOURS = {0:[[600,1200]], 1:[[690,1320]], 2:[[480,1200]], 3:[[1020,1560]], 4:[[0,1440]], 5:[[540,1320]], 6:[[420,1380]], 7:[[480,1140]]};
 const DAYS=["Mo","Tu","We","Th","Fr","Sa","Su"];
 const ohCache=new Map();
 // parses the common opening_hours forms ("Mo-Fr 10:00-20:00; Sa,Su 11:00-19:00", "24/7", "17:00-02:00").
