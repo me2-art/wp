@@ -39,7 +39,7 @@ button{cursor:pointer}
 .app{display:grid;grid-template-columns:minmax(0,1fr) 420px;height:100vh;height:100dvh}
 .stage{position:relative;min-width:0;height:100%}
 #map{position:absolute;inset:0;background:var(--soft)}
-.panel{overflow-y:auto;background:var(--bg);border-left:1px solid var(--line);
+.panel{min-width:0;overflow-y:auto;background:var(--bg);border-left:1px solid var(--line);
   padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   display:flex;flex-direction:column;gap:14px}
 
@@ -91,16 +91,28 @@ button{cursor:pointer}
 #steps:focus-visible{box-shadow:0 2px 0 var(--ink)}
 .steps-row span{font-size:14px;color:var(--muted)}
 .presets{display:flex;gap:6px;flex-wrap:wrap}
-.seg-sm{align-self:flex-start}
+.seg-sm{align-self:flex-start;max-width:100%;overflow-x:auto}
+.seg button{white-space:nowrap}
 .seg-sm button{padding:6px 12px;font-size:12px}
 .big-in{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em;color:var(--ink)}
 .big-in:focus-visible{box-shadow:0 2px 0 var(--ink)}
+.dest{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:var(--soft)}
+.dest-row{display:flex;gap:6px;align-items:center}
+.dest-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:7px 10px;font-size:16px}
+.dest-row .pchip{white-space:nowrap}
+.dest-now{font-size:13px;display:flex;align-items:center;gap:8px}
+.dest-now b{font-weight:700}
+.dest-now .x{border:0;background:transparent;color:var(--muted);font-size:16px;padding:0 4px}
+.dest-favs{display:flex;gap:6px;flex-wrap:wrap}
+.dest-favs .pchip{font-family:var(--f-body)}
+.dest-pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--btn);border:3px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,.35);display:grid;place-items:center}
+.dest-pin span{transform:rotate(45deg);color:var(--btn-ink);font:700 11px/1 var(--f-body)}
 .depart{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
 .depart input{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:5px 8px;font-family:var(--f-num);font-size:15px;color:var(--ink)}
 .depart .pchip{padding:3px 10px}
 .timectx{font-size:12px;color:var(--muted)}
-.btn-row{display:flex;gap:8px}
-.btn2{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:12px;padding:10px;font-weight:700;font-size:13px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+.btn2{flex:1 1 0;min-width:0;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:12px;padding:10px;font-weight:700;font-size:13px}
 .btn2 svg{width:16px;height:16px}
 .btn2.on{background:var(--soft);border-color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:3000;background:var(--btn);color:var(--btn-ink);border-radius:999px;padding:9px 16px;font-size:13px;box-shadow:var(--shadow)}
@@ -183,7 +195,8 @@ details.more[open] summary{margin-bottom:8px}
 .stops .no.back{background:var(--soft);color:var(--ink)}
 
 @media (max-width:860px){
-  .app{grid-template-columns:1fr;height:auto}
+  .app{grid-template-columns:minmax(0,1fr);height:auto}
+  .seg-sm button{padding:6px 9px}
   .stage{height:64vh;height:64svh;min-height:380px}
   .panel{border-left:0;overflow:visible}
   .switcher{bottom:10px}
@@ -239,6 +252,15 @@ details.more[open] summary{margin-bottom:8px}
         </div>
         <button class="go" id="goBtn" type="button">ルートを探す</button>
       </div>
+      <div class="dest" id="destBox" hidden>
+        <form class="dest-row" id="destForm">
+          <input id="destQ" type="search" placeholder="行き先（駅名・施設名・住所）" autocomplete="off" enterkeyhint="search" aria-label="行き先">
+          <button class="pchip" type="submit">検索</button>
+          <button class="pchip" type="button" id="destPick" aria-pressed="false">地図で選ぶ</button>
+        </form>
+        <div class="dest-now" id="destNow">行き先なし：歩数ぶん歩いた先のおすすめを出します</div>
+        <div class="dest-favs" id="destFavs"></div>
+      </div>
       <details class="more" id="more">
         <summary>歩幅 <span class="num" id="strideSum">70cm</span>・体重を設定 ›</summary>
         <div class="stride-box">
@@ -274,13 +296,13 @@ details.more[open] summary{margin-bottom:8px}
     <div class="list" id="results"></div>
 
     <section class="card" id="logCard" aria-label="歩いた記録">
-      <div class="card-h"><span class="bar" style="--c:var(--ink)"></span><strong>歩いた記録<span class="desc">「このルートを歩いた」を押すと記録されます</span></strong></div>
+      <div class="card-h"><span class="bar" style="--c:var(--ink)"></span><strong>歩いた記録<span class="desc">ルートの「歩いた」を押すと記録されます</span></strong></div>
       <div class="log-stats" id="logStats"></div>
       <label class="switch" for="showWalked">歩いた道を地図に表示<input id="showWalked" type="checkbox" checked></label>
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-11</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-12</div>
   </aside>
 </div>
 
@@ -291,6 +313,7 @@ details.more[open] summary{margin-bottom:8px}
 "use strict";
 const $ = s => document.querySelector(s);
 const THEMES = {
+  direct: {name:"最短ルート",       color:"#14181f", desc:"いちばん近い道で行き先へ", direct:true},
   shop:   {name:"商店街・グルメ",   color:"#ef6a2f", desc:"お店の多い通りを抜ける", cat:"shop"},
   sight:  {name:"寺社・名所",       color:"#9351d6", desc:"神社仏閣や見どころを経由", cat:"sight"},
   green:  {name:"公園・緑",         color:"#23995d", desc:"公園や庭園をつないで歩く", cat:"green"},
@@ -303,6 +326,7 @@ const THEMES = {
 };
 const LOOP_ORDER = ["shop","sight","green","water","hill","flat"];
 const ONE_ORDER  = ["station","shop","sight","green","water","bath","hill","flat"];
+const DEST_ORDER = ["direct","shop","sight","green","water","hill","flat","free"];
 
 let mode = "loop";
 let start = {lat:35.69665, lon:139.81415, name:"錦糸町駅"};
@@ -370,6 +394,25 @@ async function elevations(ll){ // up to 100 points
 
 
 
+/* ---------- destination (片道) ---------- */
+let dest = null, destMarker = null, pickingDest = false;
+const destMode = () => mode==="one" && !!dest;
+function setDest(lat, lon, name, query){
+  dest = {lat, lon, name: name || "地図で選んだ行き先", query: query || null};
+  pickingDest = false; $("#destPick").setAttribute("aria-pressed", false);
+  const ll=[lat,lon];
+  if(!destMarker) destMarker = L.marker(ll,{zIndexOffset:900,icon:L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,26],html:'<div class="dest-pin"><span>着</span></div>'})}).addTo(map);
+  else destMarker.setLatLng(ll).addTo(map);
+  renderDest(); clearResults(); updateEst();
+  map.fitBounds(L.latLngBounds([[start.lat,start.lon], ll]), {padding:[80,80], maxZoom:16}); }
+function clearDest(){ dest=null; if(destMarker) map.removeLayer(destMarker); renderDest(); clearResults(); updateEst(); }
+function renderDest(){
+  const box=$("#destNow");
+  if(dest){ box.innerHTML = `行き先：<b>${esc(dest.name)}</b> <button type="button" class="x" aria-label="行き先を消す">×</button>`; box.querySelector(".x").onclick=clearDest; }
+  else box.textContent = pickingDest ? "地図をタップして行き先を選んでください" : "行き先なし：歩数ぶん歩いた先のおすすめを出します";
+  const fv=$("#destFavs"); fv.innerHTML="";
+  favs.filter(f=>!same(f)).forEach(f=>{ const b=document.createElement("button"); b.type="button"; b.className="pchip"; b.textContent="★ "+f.name+"へ"; b.onclick=()=>setDest(f.lat,f.lon,f.name); fv.appendChild(b); }); }
+
 /* ---------- inputs ---------- */
 const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v)&&v>0 ? v : d; };
 const WALK_MPM = 80; // walking speed, metres per minute (4.8 km/h)
@@ -394,7 +437,7 @@ function updateEst(){
   const v = Math.round(num(inputMode==="time"?"#minutes":inputMode==="kcal"?"#kcalIn":"#steps",0));
   document.querySelectorAll("#presets .pchip").forEach(b=>b.setAttribute("aria-pressed", +b.dataset.v===v));
   updateTimeCtx();
-  if(map) reachCircle.setLatLng([start.lat,start.lon]).setRadius(reachRadius(D));
+  if(map){ reachCircle.setLatLng([start.lat,start.lon]).setRadius(reachRadius(D)); reachCircle.setStyle(destMode()?{opacity:0,fillOpacity:0}:{opacity:1,fillOpacity:.04}); }
 }
 
 function setStart(lat, lon, name){
@@ -674,7 +717,43 @@ function bestDirection(D, th, elevGrid, oneWay, r, exclude=[]){
     if(v>bv){ bv=v; best=t; } }
   return {theta:best, score:bv}; }
 
+// Routes to a chosen destination: the shortest path, and themed detours. A detour goes through two
+// waypoints on an ellipse around start and destination, sized so the walk matches the target; the side
+// and position of the ellipse are picked for the theme (shops, sights …), as with loop routes.
+async function designDestRoute(key, D, P, target, opt={}){
+  const th=THEMES[key], A={x:0,y:0}, B=P.xy(dest), d0=Math.hypot(B.x,B.y);
+  const destWp = {x:B.x, y:B.y, label:dest.name, query:dest.query, poi:{name:dest.name, cat:"dest"}};
+  if(key==="direct"){ const res = await osrm([start, dest]); return {key, ...res, err:0, wps:[destWp], theta:"direct"}; }
+  let L = target/1.25;
+  if(L < d0*1.15) return null;                                    // target too short for a detour
+  const u={x:B.x/d0, y:B.y/d0}, v={x:-u.y, y:u.x}, C={x:B.x/2, y:B.y/2};
+  const ell = (L,t) => { const a=L/2, c=d0/2, b=Math.sqrt(Math.max(a*a-c*c,1)), r=t*Math.PI/180;
+    return {x:C.x+a*Math.cos(r)*u.x+b*Math.sin(r)*v.x, y:C.y+a*Math.cos(r)*u.y+b*Math.sin(r)*v.y}; };
+  const wpsFor = (c,L) => [ell(L, c.s*(c.t0+30)), ell(L, c.s*(c.t0-30))];   // nearer the start first
+  let cands=[]; for(const s0 of [1,-1]) for(const t0 of [60,90,120]) cands.push({id:s0*1000+t0, s:s0, t0});
+  cands = cands.filter(c=>!(opt.exclude||[]).includes(c.id)); if(!cands.length) return null;
+  if(th.elev){
+    let es=null; try{ es = await elevations([start, dest, ...cands.flatMap(c=>wpsFor(c,L).map(q=>P.ll(q)))]); }catch(e){}
+    if(!es) return null;
+    cands.forEach((c,i)=>{ const v=[es[0],es[1],es[2+i*2],es[3+i*2]]; const rg=Math.max(...v)-Math.min(...v); c.score = th.elev==="max"?rg:-rg; });
+  } else if(th.free){ cands.forEach(c=>{ const q=P.ll(ell(L, c.s*c.t0)); c.score = (walkedCells.has(cellKey(q.lat,q.lon))?0:1)+Math.random(); }); }
+  else cands.forEach(c=>{ const pts=[A,...wpsFor(c,L),B]; c.score = corridorScore(D, th.cat, pts) + (th.cat==="shop" ? 4*corridorScore(D,"street",pts) : 0); });
+  cands.sort((a,b)=>b.score-a.score);
+  const cand = cands[0]; if(!th.elev && !th.free && cand.score<3) return null;
+  let best=null;
+  for(let it=0; it<3; it++){
+    let w = wpsFor(cand, L).map(q=>th.cat ? snap(D, th.cat, q, Math.max(200, L*0.1), key==="sight") : q);
+    if(key==="shop") w = w.map(p=>snapStreet(D, p, Math.max(200, L*0.1)));
+    w = w.map(p=>toNamedStop(D, p, key));
+    const res = await osrm([start, ...w.map(p=>P.ll(p)), dest]);
+    const err = Math.abs(res.dist-target)/target;
+    if(!best || err<best.err) best = {...res, err, wps:[...w, destWp], theta:cand.id};
+    if(err<0.08) break;
+    L = Math.max(d0*1.1, L*Math.min(1.6, Math.max(0.6, target/res.dist))); }
+  return best ? {key, ...best} : null; }
+
 async function designRoute(key, D, P, target, elevGrid, opt={}){
+  if(destMode()) return designDestRoute(key, D, P, target, opt);
   const th = THEMES[key]; const oneWay = mode==="one";
   let r = reachRadius(target), best=null, theta=0, fixedEnd=null, used=new Set(opt.exEnds||[]);
 
@@ -717,7 +796,7 @@ function snapStreet(D, p, win){
 /* ---------- stops handed to Google Maps ---------- */
 // Move an unnamed stop (e.g. the middle of a shop cluster) onto the nearest named spot within 250 m,
 // so Google Maps can list it by name instead of a street address.
-const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop");
+const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop" && p.poi.cat!=="dest");
 function toNamedStop(D, p, key){
   if(isNamedStop(p)) return p;
   const order = key==="green" ? ["green","sight","station"] : key==="shop" ? ["street","sight","green","station"] : ["sight","green","station"];
@@ -739,13 +818,15 @@ async function prepareGoogleStops(rt){
   if(rt.gq) return;
   const st = stopsFor(rt), out=[];
   for(const s of st){
-    if(s.named){ const w = await wardOf(s.lat, s.lon); out.push(w ? `${s.label} ${w}` : `${s.label}`); }
+    if(s.query) out.push(s.query);    // a destination the user searched by name goes to Google as typed
+    else if(s.named){ const w = await wardOf(s.lat, s.lon); out.push(w ? `${s.label} ${w}` : `${s.label}`); }
     else out.push(`${s.lat.toFixed(6)},${s.lon.toFixed(6)}`); }
   rt.gq = out; }
 // The route is built through rt.wps (named spots or shop clusters). Google gets exactly these points,
 // so its stops match what the card lists; each is labelled with its own name or the nearest named place.
 function stopNames(rt, D){
   return rt.wps.map((p,i)=>{
+    if(p.label) return p.label;
     if(isNamedStop(p)) return p.poi.name;
     let best=null, bd=1e9;
     for(const cat of ["sight","green","station"]) for(const q of D.grids[cat].near(p.x,p.y,220)) if(q.name){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
@@ -756,7 +837,7 @@ function stopNames(rt, D){
 function stopsFor(rt){ // [{lat,lon,label,named}] in walking order; the last one is the destination for one-way routes
   const P=proj(start), list=(rt.info && rt.info.allStops) || rt.wps;
   return list.map((p,i)=>{ const l=P.ll(p); const named = isNamedStop(p);
-    return {lat:l.lat, lon:l.lon, named, label: named ? p.poi.name : (p.label || `経由地${i+1}`)}; }); }
+    return {lat:l.lat, lon:l.lon, named, query:p.query||null, label: named ? p.poi.name : (p.label || `経由地${i+1}`)}; }); }
 // 寄り道スポット: named places right beside the line, shown as small pins on the map
 function spotKind(p, cat){
   if(cat==="street") return {g:"街", c:"#ef6a2f"};
@@ -850,11 +931,11 @@ async function run(){
   btn.disabled=true; clearResults(); st.className="status"; routeErr=null;
   const target = targetMeters(), P = proj(start);
   setWalkCtx(target);
-  let order = mode==="loop" ? LOOP_ORDER : ONE_ORDER;
+  let order = mode==="loop" ? LOOP_ORDER : destMode() ? DEST_ORDER : ONE_ORDER;
   if(walkCtx.dark) order = [...order.filter(k=>!["green","water","sight"].includes(k)), ...order.filter(k=>["green","water","sight"].includes(k))];
   showPlaceholders(order);
   try{
-    const R = searchRadius(target);
+    const R = destMode() ? Math.min(Math.hypot(...Object.values(P.xy(dest)))/2 + target/2.5 + 400, 6000) : searchRadius(target);
     const t0 = Date.now(), quick = !!cachedRaw(R);
     const tick = setInterval(()=>{ st.textContent = `周辺のお店・名所・川を読み込み中…（${Math.round((Date.now()-t0)/1000)}秒）`; }, 1000);
     st.textContent = quick ? "保存済みの周辺データを使います…" : "周辺のお店・名所・川を読み込み中…（初回のみ時間がかかります）";
@@ -887,6 +968,11 @@ async function run(){
     if(poiErr && results.length){
       st.className="status err";
       st.innerHTML = `お店・名所のデータのサーバーにつながらなかったため、おまかせ・坂道・フラットのルートだけ作りました。<br><small>詳細: ${esc(poiErr)}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`;
+    } else if(destMode() && results.length===1 && results[0].key==="direct"){
+      const r0=results[0]; st.className="status";
+      st.textContent = r0.dist > lastRun.target*1.05
+        ? `行き先までは最短でも${fmt(stepsOf(r0))}歩（約${Math.round(r0.dist/WALK_MPM)}分）かかるので、遠回りのルートは出していません。歩数（時間・カロリー）を増やすと遠回りの候補が出ます。`
+        : `最短ルートができました。遠回りの候補は、目標の歩数が最短より15%以上多いときに出ます。`;
     } else if(results.length){
       st.textContent = `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。`;
     } else {
@@ -966,7 +1052,7 @@ function detailHTML(rt){
   const arrive = new Date(walkCtx.depart.getTime()+min*60000);
   const notes=[];
   if(i && rt.key==="hill" && range<8) notes.push(`この周辺は平坦です（高低差 約${Math.round(range)}m）。橋や歩道橋の上り下りが中心になります。`);
-  if(!rt.shared && Math.abs(dev)>15) notes.push("道の形の都合で、目標から少しずれています。");
+  if(!rt.shared && rt.key!=="direct" && Math.abs(dev)>15) notes.push("道の形の都合で、目標から少しずれています。");
   if(walkCtx.dark && ["green","water","sight"].includes(rt.key)) notes.push("日没後の時間帯です。公園や川沿い、境内は暗い場所があるので、人通りのある道を選んでください。");
   if(rt.key==="station"){ const h=arrive.getHours()+arrive.getMinutes()/60; if(h>=0.4 && h<5) notes.push(`到着は${hhmm(arrive)}ごろ。終電が終わっている可能性があります。`); }
   if(rt.key==="shop" && i && i.shopsAll>i.shops*2) notes.push(`この時間はお店の多くが閉まっています（営業中 ${i.shops}軒／全${i.shopsAll}軒）。`);
@@ -980,7 +1066,7 @@ function detailHTML(rt){
     </div>
     ${i.named.length?`<div class="hl">途中で通る場所　<b>${i.named.slice(0,6).map(esc).join("、")}</b></div>`:""}` : `<div class="hl">周辺の情報を読み込み中…</div>`;
   return `
-    <div class="card-h"><span class="bar"></span><strong>${esc(titleOf(rt))}<span class="desc">${esc(th.desc)}${rt.shared?" ・ 共有されたルート":` ・ 目標比 <span class="num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`}</span></strong></div>
+    <div class="card-h"><span class="bar"></span><strong>${esc(titleOf(rt))}<span class="desc">${esc(th.desc)}${rt.shared?" ・ 共有されたルート":rt.key==="direct"?"":` ・ 目標比 <span class="num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`}</span></strong></div>
     <div class="stats">
       <div><span>歩数</span><b>${fmt(stepsOf(rt))}</b></div>
       <div><span>距離</span><b>${(rt.dist/1000).toFixed(1)}<small>km</small></b></div>
@@ -994,9 +1080,9 @@ function detailHTML(rt){
     <div class="stops"><span class="lbl">Googleマップの経由地</span>${stopsHTML(rt)}</div>
     <a class="nav" href="${gmapsLink(rt)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 21 3l-8 18-2-8-8-2Z"/></svg>Googleマップでナビ開始</a>
     <div class="btn-row">
-      ${lastRun && !rt.shared ? `<button type="button" class="btn2" data-act="alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>別の案</button>` : ""}
+      ${lastRun && !rt.shared && rt.key!=="direct" ? `<button type="button" class="btn2" data-act="alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>別の案</button>` : ""}
       <button type="button" class="btn2" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>共有</button>
-      <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み（取り消す）":"このルートを歩いた"}</button>
+      <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み":"歩いた"}</button>
     </div>
     <div class="hl">Googleマップには上の番号の地点をスポット名で、この順番で渡します（名前のない地点だけ住所表示）。経由地が4つ以上あるときは、Googleマップのアプリで開いてください（ブラウザ版は3つまでしか使えません）。</div>`; }
 function stopsHTML(rt){
@@ -1017,7 +1103,7 @@ function renderLists(){
   for(const rt of others){
     const c=document.createElement("button"); c.type="button"; c.className="card mini"; c.style.setProperty("--c",THEMES[rt.key].color);
     const dev=(rt.dist-rt.target)/rt.target*100;
-    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${inputMode==="time"?Math.round(rt.dist/WALK_MPM)+"分":inputMode==="kcal"?fmt(kcal(rt.dist,rt.info?rt.info.asc:0))+"kcal":fmt(stepsOf(rt))+"歩"}</span><span class="dev num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`;
+    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${inputMode==="time"?Math.round(rt.dist/WALK_MPM)+"分":inputMode==="kcal"?fmt(kcal(rt.dist,rt.info?rt.info.asc:0))+"kcal":fmt(stepsOf(rt))+"歩"}</span><span class="dev num">${rt.key==="direct"?"最短":(dev>=0?"+":"")+dev.toFixed(0)+"%"}</span>`;
     c.onclick=()=>{ select(rt.key, true); };
     list.appendChild(c); } }
 
@@ -1080,6 +1166,7 @@ function saveFavs(){ try{ localStorage.setItem(FAV_KEY, JSON.stringify(favs)); }
 const same = f => Math.abs(f.lat-start.lat)<1e-5 && Math.abs(f.lon-start.lon)<1e-5;
 const STAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
 function renderFavs(){
+  if($("#destFavs")) renderDest();
   const box=$("#favs"); box.innerHTML="";
   favs.forEach((f,i)=>{
     const b=document.createElement("button"); b.type="button"; b.className="fav"+(same(f)?" on":"");
@@ -1125,7 +1212,9 @@ function initMap(){
   startMarker.on("dragend", async e=>{ const p=e.target.getLatLng(); setStart(p.lat,p.lng); const n=await reverseName(p.lat,p.lng); if(n && Math.abs(start.lat-p.lat)<1e-9){ start.name=n; $("#startName").textContent="出発: "+n; } });
   reachCircle = L.circle([start.lat,start.lon],{radius:100,color:"#14181f",weight:1,dashArray:"4 6",fill:true,fillOpacity:.04,interactive:false}).addTo(map);
   poiLayer = L.layerGroup().addTo(map);
-  map.on("click", async e=>{ const {lat,lng}=e.latlng; setStart(lat,lng); const n=await reverseName(lat,lng); if(n && start.lat===lat){ start.name=n; $("#startName").textContent="出発: "+n; } });
+  map.on("click", async e=>{ const {lat,lng}=e.latlng;
+    if(pickingDest){ setDest(lat,lng,null,null); const n=await reverseName(lat,lng); if(n && dest && dest.lat===lat){ dest.name=n; renderDest(); } return; }
+    setStart(lat,lng); const n=await reverseName(lat,lng); if(n && start.lat===lat){ start.name=n; $("#startName").textContent="出発: "+n; } });
 }
 
 function init(){
@@ -1136,7 +1225,16 @@ function init(){
   $("#depart").value = hhmm2(new Date());
   setInterval(()=>{ if(!departEdited){ $("#depart").value=hhmm2(new Date()); updateTimeCtx(); } }, 30000);
   $("#showWalked").addEventListener("change", ()=>{ drawWalked(); });
-  const setMode = m => { mode=m; $("#mLoop").setAttribute("aria-pressed", m==="loop"); $("#mOne").setAttribute("aria-pressed", m==="one"); clearResults(); updateEst(); savePrefs(); schedulePrefetch(); };
+  const setMode = m => { mode=m; $("#mLoop").setAttribute("aria-pressed", m==="loop"); $("#mOne").setAttribute("aria-pressed", m==="one");
+    $("#destBox").hidden = m!=="one"; if(destMarker){ if(m==="one" && dest) destMarker.addTo(map); else map.removeLayer(destMarker); }
+    renderDest(); clearResults(); updateEst(); savePrefs(); schedulePrefetch(); };
+  $("#destForm").addEventListener("submit", async e=>{ e.preventDefault(); const q=$("#destQ").value.trim(); if(!q) return; $("#destQ").blur(); $("#status").className="status"; $("#status").textContent="行き先を検索中…";
+    try{ const j = await fetchJSON(`https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ja&countrycodes=jp&viewbox=${start.lon-0.15},${start.lat+0.12},${start.lon+0.15},${start.lat-0.12}&q=${encodeURIComponent(q)}`, {}, 1, 10000);
+      if(!j.length){ $("#status").textContent="行き先が見つかりませんでした。別の言い方で検索するか、「地図で選ぶ」を使ってください。"; return; }
+      setDest(+j[0].lat, +j[0].lon, q, q); $("#destQ").value=""; $("#status").textContent="";
+    }catch(err){ $("#status").textContent="検索できませんでした。「地図で選ぶ」で行き先を選んでください。"; } });
+  $("#destPick").onclick=()=>{ pickingDest = !pickingDest; $("#destPick").setAttribute("aria-pressed", pickingDest); renderDest();
+    if(pickingDest) $("#stage").scrollIntoView({behavior:"smooth", block:"start"}); };
   window._setMode = setMode;
   $("#mLoop").onclick=()=>setMode("loop"); $("#mOne").onclick=()=>setMode("one");
   $("#goBtn").onclick=run;
@@ -1355,7 +1453,7 @@ function renderLog(){
     <div><span>今月</span><b>${km(month)}<small>km</small></b><span>${fmt(month.reduce((a,w)=>a+w.s,0))}歩</span></div>
     <div><span>開拓した道</span><b>${(exploredM/1000).toFixed(1)}<small>km</small></b><span>重なりを除く</span></div>`;
   const list=$("#logList"); list.innerHTML="";
-  if(!walkLog.length){ list.innerHTML='<div class="empty">まだ記録はありません。ルートを歩いたら、詳細カードの「このルートを歩いた」を押してください。</div>'; return; }
+  if(!walkLog.length){ list.innerHTML='<div class="empty">まだ記録はありません。ルートを歩いたら、詳細カードの「歩いた」を押してください（もう一度押すと取り消せます）。</div>'; return; }
   walkLog.slice(0,12).forEach(w=>{
     const d=new Date(w.d), row=document.createElement("div"); row.className="log-item"; row.style.setProperty("--c",(THEMES[w.k]||{}).color||"#888");
     row.innerHTML=`<span class="dot"></span><button type="button" class="t">${esc((THEMES[w.k]||{name:"ルート"}).name)}・${esc(w.n||"")}</button><span class="d num">${d.getMonth()+1}/${d.getDate()}　${(w.m/1000).toFixed(1)}km</span><button type="button" class="x" aria-label="この記録を削除">×</button>`;
