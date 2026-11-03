@@ -271,7 +271,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ／ 施設・道路: Overpass API・FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。</div>
   </aside>
 </div>
 
@@ -406,7 +406,7 @@ function classify(t){
 
 /* Area data is fetched once per area and kept on the phone for a week, so later searches nearby skip Overpass. */
 const CATS=["shop","sight","green","water","bath","station"];
-const POI_STORE="walkplanner.poi.v2", POI_TTL=7*864e5, POI_MAX=6;
+const POI_STORE="walkplanner.poi.v3", POI_TTL=7*864e5, POI_MAX=6;
 let poiMem=[], inflight=null;
 function readStore(){ try{ const a=JSON.parse(localStorage.getItem(POI_STORE)||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 function writeStore(list){
@@ -420,7 +420,112 @@ function cachedRaw(R){
   let e = poiMem.find(x=>covers(x,R)); if(e) return e;
   e = readStore().find(x=>covers(x,R)); if(e){ poiMem.unshift(e); poiMem=poiMem.slice(0,3); } return e||null; }
 
+/* Shops, sights, parks, stations and rivers are read straight from the map's own vector tiles (OpenFreeMap):
+   the same files the map already shows, served from a CDN with no per-user limit. Overpass is only a fallback. */
+const MVT_Z = 14;
+let tileTpl = null;
+async function tileTemplate(){
+  if(!tileTpl){ const j = await fetchJSON("https://tiles.openfreemap.org/planet", {}, 2, 12000); tileTpl = j.tiles[0]; }
+  return tileTpl; }
+// minimal Mapbox Vector Tile reader (protobuf) — only what this tool needs
+function readMVT(buf){
+  const b = new Uint8Array(buf); let pos = 0;
+  const varint = () => { let r=0, sh=0, x; do{ x=b[pos++]; r += (x&0x7f)*Math.pow(2,sh); sh+=7; }while(x>=0x80); return r; };
+  const skip = wt => { if(wt===0) varint(); else if(wt===1) pos+=8; else if(wt===2){ const l=varint(); pos+=l; } else if(wt===5) pos+=4; };
+  const str = (end) => new TextDecoder().decode(b.subarray(pos, end));
+  const layers = {};
+  while(pos < b.length){
+    const tag = varint(), f = tag>>3, wt = tag&7;
+    if(f!==3 || wt!==2){ skip(wt); continue; }
+    const lend = varint()+pos; const L = {name:"", keys:[], values:[], feats:[], extent:4096};
+    while(pos < lend){
+      const t2 = varint(), f2 = t2>>3, w2 = t2&7;
+      if(f2===1 && w2===2){ const l=varint(); L.name=str(pos+l); pos+=l; }
+      else if(f2===3 && w2===2){ const l=varint(); L.keys.push(str(pos+l)); pos+=l; }
+      else if(f2===4 && w2===2){ const vend=varint()+pos; let v=null;
+        while(pos<vend){ const t3=varint(), f3=t3>>3, w3=t3&7;
+          if(f3===1){ const l=varint(); v=str(pos+l); pos+=l; }
+          else if(f3===2){ v=new DataView(b.buffer,b.byteOffset+pos,4).getFloat32(0,true); pos+=4; }
+          else if(f3===3){ v=new DataView(b.buffer,b.byteOffset+pos,8).getFloat64(0,true); pos+=8; }
+          else if(f3===4||f3===5){ v=varint(); }
+          else if(f3===6){ const n=varint(); v=(n%2)?-(n+1)/2:n/2; }
+          else if(f3===7){ v=!!varint(); }
+          else skip(w3); }
+        L.values.push(v); }
+      else if(f2===5 && w2===0){ L.extent=varint(); }
+      else if(f2===2 && w2===2){ const fend=varint()+pos; const F={tags:[], type:0, geom:[]};
+        while(pos<fend){ const t3=varint(), f3=t3>>3, w3=t3&7;
+          if(f3===2 && w3===2){ const e=varint()+pos; while(pos<e) F.tags.push(varint()); }
+          else if(f3===3){ F.type=varint(); }
+          else if(f3===4 && w3===2){ const e=varint()+pos; while(pos<e) F.geom.push(varint()); }
+          else skip(w3); }
+        L.feats.push(F); }
+      else skip(w2); }
+    layers[L.name] = L; }
+  return layers; }
+function mvtProps(L, F){ const o={}; for(let i=0;i<F.tags.length;i+=2) o[L.keys[F.tags[i]]] = L.values[F.tags[i+1]]; return o; }
+function mvtLines(L, F, tx, ty, z){ // -> arrays of {lat,lon}
+  const n = Math.pow(2,z), out=[]; let x=0, y=0, i=0, cur=null;
+  const ll = () => { const X=(tx + x/L.extent)/n, Y=(ty + y/L.extent)/n; return {lon:X*360-180, lat:Math.atan(Math.sinh(Math.PI*(1-2*Y)))*180/Math.PI}; };
+  while(i<F.geom.length){ const ci=F.geom[i++], cmd=ci&7, cnt=ci>>3;
+    if(cmd===7){ continue; }
+    for(let k=0;k<cnt;k++){ const dx=F.geom[i++], dy=F.geom[i++]; x += (dx>>>1)^(-(dx&1)); y += (dy>>>1)^(-(dy&1));
+      if(cmd===1){ cur=[ll()]; out.push(cur); } else if(cmd===2 && cur) cur.push(ll()); } }
+  return out; }
+const SHOP_CLASS = new Set(["shop","grocery","clothing_store","alcohol_shop","bakery","restaurant","fast_food","cafe","bar","beer","ice_cream","books","music","jewelry","furniture","gift","florist","cosmetics"]);
+const SIGHT_CLASS = new Set(["place_of_worship","attraction","museum","art_gallery","monument","castle","historic","viewpoint"]);
+function mvtShopType(cls, sub){
+  if(sub==="convenience") return 4; if(sub==="supermarket") return 5; if(cls==="fast_food"||sub==="fast_food") return 6;
+  if(cls==="restaurant"||cls==="ice_cream"||sub==="food_court") return 1; if(cls==="cafe") return 2; if(cls==="bar"||cls==="beer") return 3; return 0; }
+
+async function fetchRawTiles(R){
+  const Rf = Math.min(Math.round(R+500), 6500), c = {lat:start.lat, lon:start.lon};
+  const tpl = await tileTemplate();
+  const n = Math.pow(2, MVT_Z), dLat = Rf/110540, dLon = Rf/(111320*Math.cos(c.lat*Math.PI/180));
+  const tX = lon => Math.floor((lon+180)/360*n), tY = lat => Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n);
+  const x0=tX(c.lon-dLon), x1=tX(c.lon+dLon), y0=tY(c.lat+dLat), y1=tY(c.lat-dLat);
+  const jobs=[]; for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) jobs.push([x,y]);
+  if(jobs.length>64) throw Object.assign(new Error("tiles"), {detail:"範囲が広すぎます"});
+  const items=[], seen=new Set(), r5 = v => Math.round(v*1e5)/1e5;
+  let failed=0;
+  const one = async ([x,y]) => {
+    const url = tpl.replace("{z}",MVT_Z).replace("{x}",x).replace("{y}",y);
+    let buf; try{ const r = await fetchT(url, {}, 15000); if(!r.ok){ if(r.status!==404 && r.status!==204) failed++; return; } buf = await r.arrayBuffer(); }catch(e){ failed++; return; }
+    if(!buf.byteLength) return;
+    const layers = readMVT(buf);
+    const poi = layers.poi;
+    if(poi) for(const F of poi.feats){
+      const pr = mvtProps(poi, F), cls = pr.class||"", sub = pr.subclass||"";
+      let cat = null, code = 0;
+      if(cls==="railway" && /^(station|halt)$/.test(sub)) cat="station";
+      else if(sub==="public_bath") cat="bath";
+      else if(cls==="park" || sub==="park" || sub==="garden") cat="green";
+      else if(SIGHT_CLASS.has(cls)){ cat="sight"; code = (cls==="museum"||cls==="art_gallery") ? 1 : 0; }
+      else if(SHOP_CLASS.has(cls)){ cat="shop"; code = mvtShopType(cls, sub); }
+      if(!cat) continue;
+      const pt = mvtLines(poi, F, x, y, MVT_Z)[0]; if(!pt||!pt[0]) continue;
+      const lat=r5(pt[0].lat), lon=r5(pt[0].lon), name = cat==="shop" ? "" : (pr["name:ja"]||pr.name||"");
+      const key = cat+lat+","+lon; if(seen.has(key)) continue; seen.add(key);
+      items.push([CATS.indexOf(cat), lat, lon, name, code]); }
+    const ww = layers.waterway;
+    if(ww) for(const F of ww.feats){
+      const pr = mvtProps(ww, F); if(!/^(river|canal)$/.test(pr.class||"")) continue;
+      for(const line of mvtLines(ww, F, x, y, MVT_Z)){ if(line.length<2) continue; const Pc=proj(line[0]);
+        for(const sp of resample(line.map(p=>Pc.xy(p)), 60)){ const l=Pc.ll(sp); items.push([3, r5(l.lat), r5(l.lon)]); } } } };
+  for(let i=0;i<jobs.length;i+=8) await Promise.all(jobs.slice(i,i+8).map(one));
+  if(failed > jobs.length/2) throw Object.assign(new Error("tiles"), {detail:`地図タイル ${failed}/${jobs.length}枚取得失敗`});
+  const entry = {lat:c.lat, lon:c.lon, R:Rf, t:Date.now(), items, src:"tiles"};
+  poiMem.unshift(entry); poiMem=poiMem.slice(0,3);
+  writeStore([entry, ...readStore()]);
+  return entry; }
+
 async function fetchRaw(R){
+  try{ return await fetchRawTiles(R); }
+  catch(e){ console.warn("tiles failed, trying Overpass", e);
+    try{ return await fetchRawOverpass(R); }
+    catch(e2){ throw Object.assign(new Error("poi"), {detail:`地図タイル: ${e.detail||"接続できない"} ／ Overpass: ${e2.detail||"接続できない"}`}); } } }
+
+async function fetchRawOverpass(R){
   const Rf = Math.min(Math.round(R+500), 6500), c = {lat:start.lat, lon:start.lon};
   const dLat = Rf/110540, dLon = Rf/(111320*Math.cos(c.lat*Math.PI/180));
   const a = `(${(c.lat-dLat).toFixed(5)},${(c.lon-dLon).toFixed(5)},${(c.lat+dLat).toFixed(5)},${(c.lon+dLon).toFixed(5)})`; // bounding box: much cheaper for the server than a radius search
@@ -596,7 +701,8 @@ async function runDiagnostics(){
   const q = "data="+encodeURIComponent("[out:json][timeout:10];node(1);out;");
   const post = {method:"POST", body:q, headers:{"Content-Type":"application/x-www-form-urlencoded"}};
   const lines = [];
-  for(const u of OVERPASS) lines.push(await test("施設データ "+new URL(u).host, u, post));
+  lines.push(await test("地図タイル（お店・名所）", "https://tiles.openfreemap.org/planet"));
+  for(const u of OVERPASS) lines.push(await test("予備 "+new URL(u).host, u, post));
   const o=start, d=proj(start).ll({x:300,y:300});
   lines.push(await test("ルート検索", `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${o.lon},${o.lat};${d.lon},${d.lat}?overview=false`));
   lines.push(await test("標高", `https://api.open-meteo.com/v1/elevation?latitude=${o.lat}&longitude=${o.lon}`));
