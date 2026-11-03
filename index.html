@@ -277,7 +277,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-8</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-10</div>
   </aside>
 </div>
 
@@ -675,6 +675,7 @@ async function designRoute(key, D, P, target, elevGrid){
     } else {
       wps = loopWaypoints(theta, r).map(q=>snap(D, th.cat, q, Math.max(200,r*0.3), key==="sight"));
     }
+    wps = wps.map(p=>toNamedStop(D, p, key));
     const pts = [{x:0,y:0}, ...wps, ...(oneWay?[]:[{x:0,y:0}])];
     const res = await osrm(pts.map(p=>P.ll(p)));
     const err = Math.abs(res.dist-target)/target;
@@ -686,6 +687,32 @@ async function designRoute(key, D, P, target, elevGrid){
   return {key, ...best}; }
 
 /* ---------- stops handed to Google Maps ---------- */
+// Move an unnamed stop (e.g. the middle of a shop cluster) onto the nearest named spot within 250 m,
+// so Google Maps can list it by name instead of a street address.
+function toNamedStop(D, p, key){
+  if(p.poi && p.poi.name) return p;
+  const order = key==="green" ? ["green","sight","station"] : ["sight","green","station"];
+  for(const cat of order){
+    let best=null, bd=1e9;
+    for(const q of D.grids[cat].near(p.x,p.y,250)) if(q.name && q.name.length>1){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
+    if(best) return {x:best.x, y:best.y, poi:best}; }
+  return p; }
+// Ward name for a point (cached), used to make "スポット名 墨田区" unambiguous for Google
+const wardCache = new Map();
+async function wardOf(lat, lon){
+  const k = lat.toFixed(2)+","+lon.toFixed(2); if(wardCache.has(k)) return wardCache.get(k);
+  let w = "";
+  try{ const j = await fetchJSON(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&accept-language=ja&lat=${lat}&lon=${lon}`, {}, 1, 8000);
+       const a = j.address||{}; w = a.city||a.city_district||a.town||a.county||""; }catch(e){}
+  wardCache.set(k, w); return w; }
+// Fills rt.gq: what each stop is called in the Google Maps link (name + ward when it has a name, else coordinates)
+async function prepareGoogleStops(rt){
+  if(rt.gq) return;
+  const st = stopsFor(rt), out=[];
+  for(const s of st){
+    if(s.named){ const w = await wardOf(s.lat, s.lon); out.push(w ? `${s.label} ${w}` : `${s.label}`); }
+    else out.push(`${s.lat.toFixed(6)},${s.lon.toFixed(6)}`); }
+  rt.gq = out; }
 // The route is built through rt.wps (named spots or shop clusters). Google gets exactly these points,
 // so its stops match what the card lists; each is labelled with its own name or the nearest named place.
 function stopNames(rt, D){
@@ -697,9 +724,34 @@ function stopNames(rt, D){
     if(rt.key==="shop") return "お店が集まる通り";
     if(rt.key==="water") return "川沿い";
     return null; }); }
-function stopsFor(rt){ // [{lat,lon,label}] in walking order; the last one is the destination for one-way routes
-  const P=proj(start), names=(rt.info&&rt.info.stops)||[];
-  return rt.wps.map((p,i)=>{ const l=P.ll(p); return {lat:l.lat, lon:l.lon, label:names[i] || `経由地${i+1}`}; }); }
+function stopsFor(rt){ // [{lat,lon,label,named}] in walking order; the last one is the destination for one-way routes
+  const P=proj(start), list=(rt.info && rt.info.allStops) || rt.wps;
+  return list.map((p,i)=>{ const l=P.ll(p); const named = !!(p.poi && p.poi.name);
+    return {lat:l.lat, lon:l.lon, named, label: named ? p.poi.name : (p.label || `経由地${i+1}`)}; }); }
+// Stops for Google Maps: the points the route was built through, plus named spots the line passes
+// (shrines, sights, parks right beside it), in walking order, at least ~250 m apart, at most 8 waypoints.
+const MAX_STOPS = 8;
+function pickStops(rt, samples, sights, greens, baseNames){
+  const near = p => { let bi=0, bd=1e9; for(let i=0;i<samples.length;i++){ const d=dist(p,samples[i]); if(d<bd){ bd=d; bi=i; } } return {pos:bi, off:bd}; };
+  const oneWay = mode==="one", N = samples.length, GAP = 10; // 10 samples = 250 m
+  const base = rt.wps.map((p,i)=>({...p, pos:near(p).pos, label:baseNames[i]||null}));
+  const end = oneWay ? base.pop() : null;
+  const chosen = [...base], used = new Set(base.filter(b=>b.poi&&b.poi.name).map(b=>b.poi.name));
+  const cands = [
+    ...sights.filter(p=>p.name).map(p=>({p, pr:p.code===1?3:2})),
+    ...greens.filter(p=>p.name).map(p=>({p, pr:1})) ]
+    .map(c=>({...c, ...near(c.p)}))
+    .filter(c=>c.off <= (c.pr===1 ? 70 : 50))
+    .sort((a,b)=>b.pr-a.pr || a.off-b.off);
+  for(const c of cands){
+    if(chosen.length >= MAX_STOPS) break;
+    if(used.has(c.p.name)) continue;
+    if(c.pos < GAP || c.pos > N-GAP) continue;                       // not right at the start / finish
+    if(end && Math.abs(end.pos-c.pos) < GAP) continue;
+    if(chosen.some(s=>Math.abs(s.pos-c.pos) < GAP)) continue;
+    chosen.push({x:c.p.x, y:c.p.y, poi:c.p, pos:c.pos}); used.add(c.p.name); }
+  chosen.sort((a,b)=>a.pos-b.pos);
+  return end ? [...chosen, end] : chosen; }
 
 /* ---------- analysis ---------- */
 async function analyze(rt, D, P){
@@ -707,6 +759,7 @@ async function analyze(rt, D, P){
   const samples = resample(xy, 25);
   const along = (cat, rad) => { const s=new Set(); samples.forEach((q,i)=>{ for(const p of D.grids[cat].near(q.x,q.y,rad)) if(!s.has(p)){ s.add(p); p._i=i; } }); return [...s].sort((a,b)=>a._i-b._i); };
   const shops = along("shop",35), shopsAll = along("shopAll",35), sights = along("sight",45), greens = along("green",120);
+  const allStops = pickStops(rt, samples, sights, greens, stopNames(rt, D));
   const cells = new Set(samples.map(q=>{ const l=P.ll(q); return cellKey(l.lat,l.lon); }));
 
   const nearWater = samples.filter(q=>D.grids.water.near(q.x,q.y,100).length).length/samples.length;
@@ -718,8 +771,7 @@ async function analyze(rt, D, P){
   const pts = resample(xy, L/(n-1)).slice(0,100).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   let asc=0; for(let i=1;i<el.length;i++){ const d=el[i]-el[i-1]; if(d>0) asc+=d; }
-  const stops = stopNames(rt, D);
-  return {stops, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
+  return {allStops, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
@@ -838,9 +890,9 @@ function spark(el, color){
 // Between stops Google picks its own streets, which can differ slightly from the drawn line.
 function gmapsLink(rt){
   const f = v => v.toFixed(6), o = `${f(start.lat)},${f(start.lon)}`;
-  const st = stopsFor(rt).map(s=>`${f(s.lat)},${f(s.lon)}`);
+  const st = rt.gq ? [...rt.gq] : stopsFor(rt).map(s=>`${f(s.lat)},${f(s.lon)}`);
   const dest = mode==="loop" ? o : (st.pop() || o);
-  return `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${dest}${st.length?"&waypoints="+encodeURIComponent(st.join("|")):""}&travelmode=walking`; }
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(dest)}${st.length?"&waypoints="+encodeURIComponent(st.join("|")):""}&travelmode=walking`; }
 
 function detailHTML(rt){
   const th=THEMES[rt.key], i=rt.info, dev=(rt.dist-rt.target)/rt.target*100;
@@ -878,7 +930,7 @@ function detailHTML(rt){
       <button type="button" class="btn2" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>共有</button>
       <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み（取り消す）":"このルートを歩いた"}</button>
     </div>
-    <div class="hl">Googleマップには上の番号の地点を順に渡します。地点と地点の間の道はGoogleが選ぶので、地図の線と少し違う道になることがあります。</div>`; }
+    <div class="hl">Googleマップには上の番号の地点をスポット名で、この順番で渡します（名前のない地点だけ住所表示）。経由地が4つ以上あるときは、Googleマップのアプリで開いてください（ブラウザ版は3つまでしか使えません）。</div>`; }
 function stopsHTML(rt){
   const st = stopsFor(rt), oneWay = mode==="one";
   const items = st.map((s,i)=>`<li><span class="no" style="--c:${THEMES[rt.key].color}">${oneWay && i===st.length-1 ? "着" : i+1}</span>${esc(s.label)}</li>`);
@@ -908,6 +960,8 @@ function fitRoute(key){
   const narrow = window.innerWidth<=860;
   map.fitBounds(routeLayers[key].getBounds(), {paddingTopLeft:[24, narrow?110:120], paddingBottomRight:[24, 110], maxZoom:17}); }
 
+function refreshNavLink(rt){
+  prepareGoogleStops(rt).then(()=>{ const a=document.querySelector("#detail .nav"); if(a && selected===rt.key) a.href = gmapsLink(rt); }).catch(()=>{}); }
 function select(key, scrollToMap){
   selected=key;
   document.querySelectorAll(".rchip").forEach(b=>b.setAttribute("aria-pressed", b.dataset.key===key));
@@ -921,7 +975,7 @@ function select(key, scrollToMap){
     L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div class="wp-pin" style="--c:${THEMES[key].color}">${lab}</div>`}),interactive:true})
       .bindTooltip(s.label).addTo(poiLayer); });
   fitRoute(key);
-  renderLists();
+  renderLists(); refreshNavLink(rt);
   if(scrollToMap) $("#stage").scrollIntoView({behavior:"smooth", block:"start"}); }
 
 /* ---------- stride ---------- */
@@ -1181,7 +1235,7 @@ async function openShared(str){
     setWalkCtx(res.dist);
     results=[rt]; showPlaceholders([key]); drawRoute(rt); fillChip(rt); select(key,false);
     $("#status").textContent="共有されたルートです。条件を変えて「ルートを探す」を押すと、自分用のルートも作れます。";
-    try{ const D=await loadPOIs(P, Math.max(1500, polyLen(rt.coords.map(c=>P.xy(c)))/2)); rt.info=await analyze(rt,D,P); if(results[0]===rt){ fillChip(rt); renderLists(); } }catch(e){}
+    try{ const D=await loadPOIs(P, Math.max(1500, polyLen(rt.coords.map(c=>P.xy(c)))/2)); rt.info=await analyze(rt,D,P); rt.gq=null; if(results[0]===rt){ fillChip(rt); renderLists(); refreshNavLink(rt); select(rt.key,false); } }catch(e){}
   }catch(e){ $("#status").className="status err"; $("#status").textContent="共有リンクを読み込めませんでした。"; } }
 
 /* ---------- walk log ---------- */
