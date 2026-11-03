@@ -87,18 +87,37 @@ button{cursor:pointer}
 .est{font-size:12px;color:var(--muted)}
 .ctrl{background:var(--surface);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 0 var(--line)}
 .steps-row{display:flex;align-items:baseline;gap:6px}
-#steps{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em}
+#steps_unused{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em}
 #steps:focus-visible{box-shadow:0 2px 0 var(--ink)}
 .steps-row span{font-size:14px;color:var(--muted)}
 .presets{display:flex;gap:6px;flex-wrap:wrap}
 .seg-sm{align-self:flex-start}
 .seg-sm button{padding:6px 12px;font-size:12px}
-.remain{display:flex;gap:12px;flex-wrap:wrap}
-.remain label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:4px}
-.remain input{width:130px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:7px 10px;font-family:var(--f-num);font-size:18px}
-.remain-label{font-size:12px;color:var(--muted);margin-bottom:-2px}
-#steps[readonly]{color:var(--ink)}
-.done{font-size:13px;font-weight:700}
+.big-in{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em;color:var(--ink)}
+.big-in:focus-visible{box-shadow:0 2px 0 var(--ink)}
+.depart{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.depart input{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:5px 8px;font-family:var(--f-num);font-size:15px;color:var(--ink)}
+.depart .pchip{padding:3px 10px}
+.timectx{font-size:12px;color:var(--muted)}
+.btn-row{display:flex;gap:8px}
+.btn2{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:12px;padding:10px;font-weight:700;font-size:13px}
+.btn2 svg{width:16px;height:16px}
+.btn2.on{background:var(--soft);border-color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:3000;background:var(--btn);color:var(--btn-ink);border-radius:999px;padding:9px 16px;font-size:13px;box-shadow:var(--shadow)}
+.log-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.log-stats div{display:flex;flex-direction:column}
+.log-stats span{font-size:10px;color:var(--muted);letter-spacing:.06em}
+.log-stats b{font-family:var(--f-num);font-size:20px;font-weight:600;line-height:1.2}
+.log-stats b small{font-size:11px;color:var(--muted);font-weight:500;margin-left:1px}
+.log-list{display:flex;flex-direction:column}
+.log-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+.log-item .dot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.log-item .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:none;border:0;padding:0;text-align:left}
+.log-item .d{color:var(--muted);font-size:12px}
+.log-item .x{border:0;background:transparent;color:var(--muted);font-size:16px;padding:0 4px}
+.switch{display:flex;align-items:center;justify-content:space-between;font-size:13px}
+.switch input{width:40px;height:22px;accent-color:var(--ink)}
+.empty{font-size:12px;color:var(--muted)}
 .pchip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 11px;font-family:var(--f-num);font-size:13px}
 .pchip[aria-pressed=true]{background:var(--soft);border-color:var(--ink)}
 .go-row{display:flex;gap:8px;align-items:stretch}
@@ -118,7 +137,7 @@ details.more[open] summary{margin-bottom:8px}
 .help{margin:0;font-size:12px;color:var(--muted);line-height:1.6}
 .stride-out{font-size:13px}
 .stride-out b{font-size:18px;margin-left:4px}
-.status{font-size:13px;color:var(--muted);min-height:1.2em}
+.status{overflow-wrap:anywhere;font-size:13px;color:var(--muted);min-height:1.2em}
 .status.err{color:var(--warn)}
 
 /* route detail */
@@ -191,18 +210,19 @@ details.more[open] summary{margin-bottom:8px}
     <section class="ctrl" aria-label="条件">
       <div class="seg seg-sm" role="group" aria-label="指定のしかた" id="inputMode">
         <button type="button" data-im="steps" aria-pressed="true">歩数で指定</button>
-        <button type="button" data-im="remain" aria-pressed="false">目標まであと何歩</button>
-      </div>
-      <div class="remain" id="remainBox" hidden>
-        <label for="todaySteps">今日ここまでの歩数<input id="todaySteps" type="number" inputmode="numeric" min="0" placeholder="6500"></label>
-        <label for="goalSteps">1日の目標<input id="goalSteps" type="number" inputmode="numeric" min="1000" step="500" value="10000"></label>
+        <button type="button" data-im="time" aria-pressed="false">時間で指定</button>
       </div>
       <div>
-        <div class="remain-label" id="remainLabel" hidden>目標まで あと</div>
-        <div class="steps-row"><input id="steps" type="number" inputmode="numeric" min="500" max="40000" step="500" value="8000" aria-label="歩数"><span>歩</span></div>
+        <div class="steps-row" id="stepsRow"><input id="steps" class="big-in" type="number" inputmode="numeric" min="500" max="40000" step="500" value="8000" aria-label="歩数"><span>歩</span></div>
+        <div class="steps-row" id="minRow" hidden><input id="minutes" class="big-in" type="number" inputmode="numeric" min="5" max="300" step="5" value="45" aria-label="歩く時間（分）"><span>分</span></div>
         <div class="est num" id="est"></div>
       </div>
       <div class="presets" id="presets"></div>
+      <div class="depart">
+        <label for="depart">出発</label><input id="depart" type="time" aria-label="出発時刻">
+        <button type="button" class="pchip" id="nowBtn" aria-pressed="true">今すぐ</button>
+        <span class="timectx" id="timeCtx"></span>
+      </div>
       <div class="go-row">
         <div class="seg" role="group" aria-label="歩き方">
           <button type="button" id="mLoop" aria-pressed="true">周回</button>
@@ -243,6 +263,13 @@ details.more[open] summary{margin-bottom:8px}
     <div id="detail"></div>
     <div class="sec-title" id="othersTitle" hidden>ほかのルート</div>
     <div class="list" id="results"></div>
+
+    <section class="card" id="logCard" aria-label="歩いた記録">
+      <div class="card-h"><span class="bar" style="--c:var(--ink)"></span><strong>歩いた記録<span class="desc">「このルートを歩いた」を押すと記録されます</span></strong></div>
+      <div class="log-stats" id="logStats"></div>
+      <label class="switch" for="showWalked">歩いた道を地図に表示<input id="showWalked" type="checkbox" checked></label>
+      <div class="log-list" id="logList"></div>
+    </section>
 
     <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ／ 施設・道路: Overpass API・FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。</div>
   </aside>
@@ -329,16 +356,21 @@ async function elevations(ll){ // up to 100 points
 
 /* ---------- inputs ---------- */
 const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v)&&v>0 ? v : d; };
-const targetMeters = () => num("#steps",8000)*num("#stride",70)/100;
+const WALK_MPM = 80; // walking speed, metres per minute (4.8 km/h)
+let inputMode = "steps";
+const targetMeters = () => inputMode==="time" ? num("#minutes",45)*WALK_MPM : num("#steps",8000)*num("#stride",70)/100;
 const fmt = n => Math.round(n).toLocaleString("ja-JP");
 function kcal(m, ascent){ const kg=num("#weight",65); const h=m/1000/4.8; return 1.05*3.5*h*kg + ascent*kg*9.8/4184/0.25; }
 function reachRadius(D){ return mode==="loop" ? D/4.4 : D/1.25; }
 
 function updateEst(){
   const D = targetMeters();
-  $("#est").textContent = `${(D/1000).toFixed(1)} km ・ 約${Math.round(D/1000/4.8*60)}分 ・ ${fmt(kcal(D,0))} kcal`;
-  const s = Math.round(num("#steps",0));
-  document.querySelectorAll(".pchip").forEach(b=>b.setAttribute("aria-pressed", +b.dataset.v===s));
+  $("#est").textContent = inputMode==="time"
+    ? `約${fmt(D*100/num("#stride",70))}歩 ・ ${(D/1000).toFixed(1)} km ・ ${fmt(kcal(D,0))} kcal`
+    : `${(D/1000).toFixed(1)} km ・ 約${Math.round(D/WALK_MPM)}分 ・ ${fmt(kcal(D,0))} kcal`;
+  const v = Math.round(num(inputMode==="time"?"#minutes":"#steps",0));
+  document.querySelectorAll("#presets .pchip").forEach(b=>b.setAttribute("aria-pressed", +b.dataset.v===v));
+  updateTimeCtx();
   if(map) reachCircle.setLatLng([start.lat,start.lon]).setRadius(reachRadius(D));
 }
 
@@ -367,7 +399,7 @@ function classify(t){
 
 /* Area data is fetched once per area and kept on the phone for a week, so later searches nearby skip Overpass. */
 const CATS=["shop","sight","green","water","bath","station"];
-const POI_STORE="walkplanner.poi.v1", POI_TTL=7*864e5, POI_MAX=6;
+const POI_STORE="walkplanner.poi.v2", POI_TTL=7*864e5, POI_MAX=6;
 let poiMem=[], inflight=null;
 function readStore(){ try{ const a=JSON.parse(localStorage.getItem(POI_STORE)||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 function writeStore(list){
@@ -384,13 +416,12 @@ function cachedRaw(R){
 async function fetchRaw(R){
   const Rf = Math.min(Math.round(R+500), 6500), c = {lat:start.lat, lon:start.lon};
   const a = `(around:${Rf},${c.lat.toFixed(6)},${c.lon.toFixed(6)})`;
-  // shops are only counted, so they come back as bare coordinates (no tags) to keep the reply small
   const q = `[out:json][timeout:35];
 (
  node["shop"]${a};
  node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court|ice_cream)$"]${a};
 );
-out skel qt;
+out qt;
 (
  nwr["tourism"~"^(attraction|museum|viewpoint|gallery)$"]${a};
  nwr["historic"]${a};
@@ -411,9 +442,11 @@ out geom qt;`;
       if(pts.length>1) for(const sp of resample(pts,60)){ const l=Pc.ll(sp); items.push([3, r5(l.lat), r5(l.lon)]); }
       continue; }
     const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon; if(lat==null) continue;
-    const cat = el.tags ? classify(t) : (el.type==="node" ? "shop" : null); if(!cat) continue;
-    const name = t["name:ja"]||t.name||"";
-    items.push(name ? [CATS.indexOf(cat), r5(lat), r5(lon), name] : [CATS.indexOf(cat), r5(lat), r5(lon)]);
+    const cat = classify(t); if(!cat) continue;
+    const name = cat==="shop" ? "" : (t["name:ja"]||t.name||"");
+    const code = cat==="shop" ? shopType(t) : cat==="sight" ? (/^(museum|gallery)$/.test(t.tourism||"")?1:0) : 0;
+    const oh = (cat==="shop"||cat==="bath"||code===1) && t.opening_hours ? t.opening_hours : "";
+    items.push(oh ? [CATS.indexOf(cat), r5(lat), r5(lon), name, code, oh] : [CATS.indexOf(cat), r5(lat), r5(lon), name, code]);
   }
   const entry = {lat:c.lat, lon:c.lon, R:Rf, t:Date.now(), items};
   poiMem.unshift(entry); poiMem=poiMem.slice(0,3);
@@ -429,11 +462,15 @@ function getRaw(R){
 
 async function loadPOIs(P, R){
   const raw = await getRaw(R);
-  const cats = {shop:[],sight:[],green:[],water:[],bath:[],station:[]};
-  const lim = R + 300;
+  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[]};
+  const lim = R + 300, mid = walkCtx.mid, arrive = walkCtx.arrive;
   for(const it of raw.items){
     const q = P.xy({lat:it[1], lon:it[2]}); if(Math.hypot(q.x,q.y)>lim) continue;
-    cats[CATS[it[0]]].push({x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||""}); }
+    const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||""};
+    if(cat==="shop"){ cats.shopAll.push(p); if(isOpen(p.oh, SHOP_HOURS[p.code], mid)) cats.shop.push(p); continue; }
+    if(cat==="sight" && p.code===1 && !isOpen(p.oh, [[600,1020]], mid)) continue;   // museums: 10-17 unless tagged
+    if(cat==="bath" && !isOpen(p.oh, [[900,1410]], arrive)) continue;               // sento: 15:00-23:30 unless tagged
+    cats[cat].push(p); }
   // dedupe stations by name
   const seen=new Set(); cats.station = cats.station.filter(st=>st.name && !seen.has(st.name) && seen.add(st.name));
   const grids = {};
@@ -518,7 +555,9 @@ async function analyze(rt, D, P){
   const xy = rt.coords.map(c=>P.xy(c));
   const samples = resample(xy, 25);
   const along = (cat, rad) => { const s=new Set(); samples.forEach((q,i)=>{ for(const p of D.grids[cat].near(q.x,q.y,rad)) if(!s.has(p)){ s.add(p); p._i=i; } }); return [...s].sort((a,b)=>a._i-b._i); };
-  const shops = along("shop",35), sights = along("sight",45), greens = along("green",120);
+  const shops = along("shop",35), shopsAll = along("shopAll",35), sights = along("sight",45), greens = along("green",120);
+  const cells = new Set(samples.map(q=>{ const l=P.ll(q); return cellKey(l.lat,l.lon); }));
+
   const nearWater = samples.filter(q=>D.grids.water.near(q.x,q.y,100).length).length/samples.length;
   const named = [];
   for(const p of [...sights.filter(p=>p.name), ...greens.filter(p=>p.name)].sort((a,b)=>a._i-b._i)) if(!named.includes(p.name)) named.push(p.name);
@@ -528,7 +567,7 @@ async function analyze(rt, D, P){
   const pts = resample(xy, L/(n-1)).slice(0,100).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   let asc=0; for(let i=1;i<el.length;i++){ const d=el[i]-el[i-1]; if(d>0) asc+=d; }
-  return {shops:shops.length, sights:sights.length, greens:greens.length, water:nearWater, named,
+  return {shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
@@ -538,7 +577,9 @@ async function run(){
   const btn=$("#goBtn"), st=$("#status");
   btn.disabled=true; clearResults(); st.className="status";
   const target = targetMeters(), P = proj(start);
-  const order = mode==="loop" ? LOOP_ORDER : ONE_ORDER;
+  setWalkCtx(target);
+  let order = mode==="loop" ? LOOP_ORDER : ONE_ORDER;
+  if(walkCtx.dark) order = [...order.filter(k=>!["green","water","sight"].includes(k)), ...order.filter(k=>["green","water","sight"].includes(k))];
   showPlaceholders(order);
   try{
     const R = searchRadius(target);
@@ -566,7 +607,7 @@ async function run(){
         if(results.length===1) select(rt.key, false); else renderLists();
       }catch(e){ console.warn(key, e); dropPlaceholder(key); }
     }
-    st.textContent = results.length ? `${results.length}本のルートができました。地図の下のカードで切り替えられます。` : "ルートを作れませんでした。出発地を変えるか、少し待って再試行してください。";
+    st.textContent = results.length ? `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。` : "ルートを作れませんでした。出発地を変えるか、少し待って再試行してください。";
     if(!results.length){ st.className="status err"; $("#switcher").hidden=true; }
   }catch(e){
     console.error(e);
@@ -593,14 +634,15 @@ function dropPlaceholder(key){ const b=$(`#switcher [data-key="${key}"]`); if(b)
 
 function keyMetric(rt){ const i=rt.info;
   switch(rt.key){
-    case "shop": return `お店 ${i.shops}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
+    case "shop": return `営業中 ${i.shops}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
     case "water": return `水辺 ${Math.round(i.water*100)}%`; case "hill": case "flat": return `登り ${Math.round(i.asc)}m`;
     default: return rt.endPoi && rt.endPoi.name ? rt.endPoi.name : THEMES[rt.key].desc; } }
 
 function fillChip(rt){
   const b=$(`#switcher [data-key="${rt.key}"]`); if(!b) return;
   b.classList.remove("wait"); b.disabled=false;
-  b.innerHTML=`<b>${esc(THEMES[rt.key].name)}</b><span class="big num">${fmt(stepsOf(rt))}<small>歩</small></span><span class="sub">${esc(keyMetric(rt))}</span>`;
+  const big = inputMode==="time" ? `${Math.round(rt.dist/WALK_MPM)}<small>分</small>` : `${fmt(stepsOf(rt))}<small>歩</small>`;
+  b.innerHTML=`<b>${esc(THEMES[rt.key].name)}</b><span class="big num">${big}</span><span class="sub">${esc(rt.info?keyMetric(rt):"読み込み中")}</span>`;
   b.onclick=()=>select(rt.key, false); }
 
 function spark(el, color){
@@ -627,39 +669,55 @@ function gmapsLink(rt){
   return `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${dest}&waypoints=${encodeURIComponent(picks.join("|"))}&travelmode=walking`; }
 
 function detailHTML(rt){
-  const th=THEMES[rt.key], i=rt.info, dev=(rt.dist-rt.target)/rt.target*100, range=i.emax-i.emin;
-  let note="";
-  if(rt.key==="hill" && range<8) note=`この周辺は平坦です（高低差 約${Math.round(range)}m）。橋や歩道橋の上り下りが中心になります。`;
-  if(Math.abs(dev)>15) note += (note?" ":"")+"道の形の都合で、目標から少しずれています。";
+  const th=THEMES[rt.key], i=rt.info, dev=(rt.dist-rt.target)/rt.target*100;
+  const range = i ? i.emax-i.emin : 0, min = Math.round(rt.dist/WALK_MPM);
+  const arrive = new Date(walkCtx.depart.getTime()+min*60000);
+  const notes=[];
+  if(i && rt.key==="hill" && range<8) notes.push(`この周辺は平坦です（高低差 約${Math.round(range)}m）。橋や歩道橋の上り下りが中心になります。`);
+  if(!rt.shared && Math.abs(dev)>15) notes.push("道の形の都合で、目標から少しずれています。");
+  if(walkCtx.dark && ["green","water","sight"].includes(rt.key)) notes.push("日没後の時間帯です。公園や川沿い、境内は暗い場所があるので、人通りのある道を選んでください。");
+  if(rt.key==="station"){ const h=arrive.getHours()+arrive.getMinutes()/60; if(h>=0.4 && h<5) notes.push(`到着は${hhmm(arrive)}ごろ。終電が終わっている可能性があります。`); }
+  if(rt.key==="shop" && i && i.shopsAll>i.shops*2) notes.push(`この時間はお店の多くが閉まっています（営業中 ${i.shops}軒／全${i.shopsAll}軒）。`);
+  const logged = isLogged(rt);
+  const tags = i ? `
+    <div class="tags">
+      <span class="tag">営業中のお店 <span class="num">${i.shops}</span></span><span class="tag">名所 <span class="num">${i.sights}</span></span><span class="tag">公園 <span class="num">${i.greens}</span></span>
+      <span class="tag">水辺 <span class="num">${Math.round(i.water*100)}%</span></span><span class="tag">登り計 <span class="num">${Math.round(i.asc)}m</span></span>
+      ${walkLog.length?`<span class="tag">初めての道 <span class="num">${freshPct(i.cells)}%</span></span>`:""}
+    </div>
+    ${i.named.length?`<div class="hl">通る場所　<b>${i.named.slice(0,6).map(esc).join("、")}</b></div>`:""}` : `<div class="hl">周辺の情報を読み込み中…</div>`;
   return `
-    <div class="card-h"><span class="bar"></span><strong>${esc(titleOf(rt))}<span class="desc">${esc(th.desc)} ・ 目標比 <span class="num">${dev>=0?"+":""}${dev.toFixed(0)}%</span></span></strong></div>
+    <div class="card-h"><span class="bar"></span><strong>${esc(titleOf(rt))}<span class="desc">${esc(th.desc)}${rt.shared?" ・ 共有されたルート":` ・ 目標比 <span class="num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`}</span></strong></div>
     <div class="stats">
       <div><span>歩数</span><b>${fmt(stepsOf(rt))}</b></div>
       <div><span>距離</span><b>${(rt.dist/1000).toFixed(1)}<small>km</small></b></div>
-      <div><span>時間</span><b>${Math.round(rt.dist/1000/4.8*60)}<small>分</small></b></div>
-      <div><span>消費</span><b>${fmt(kcal(rt.dist,i.asc))}<small>kcal</small></b></div>
+      <div><span>時間</span><b>${min}<small>分</small></b></div>
+      <div><span>消費</span><b>${fmt(kcal(rt.dist,i?i.asc:0))}<small>kcal</small></b></div>
     </div>
-    ${spark(i.el, th.color)}
-    <div class="tags">
-      <span class="tag">お店 <span class="num">${i.shops}</span></span><span class="tag">名所 <span class="num">${i.sights}</span></span><span class="tag">公園 <span class="num">${i.greens}</span></span>
-      <span class="tag">水辺 <span class="num">${Math.round(i.water*100)}%</span></span><span class="tag">登り計 <span class="num">${Math.round(i.asc)}m</span></span><span class="tag">高低差 <span class="num">${Math.round(range)}m</span></span>
-    </div>
-    ${i.named.length?`<div class="hl">通る場所　<b>${i.named.slice(0,6).map(esc).join("、")}</b></div>`:""}
-    ${note?`<div class="note">${esc(note)}</div>`:""}
+    <div class="hl">${hhmm(walkCtx.depart)}出発 → <b>${hhmm(arrive)}ごろ${mode==="loop"?"に戻る":"に到着"}</b></div>
+    ${i?spark(i.el, th.color):""}
+    ${tags}
+    ${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}
     <a class="nav" href="${gmapsLink(rt)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 21 3l-8 18-2-8-8-2Z"/></svg>Googleマップでナビ開始</a>
-    <div class="hl">Googleマップのアプリで開くと、この線と同じ道を案内します（ブラウザ版のGoogleマップでは経由地が3つまでのため、道が少し変わることがあります）。</div>`; }
+    <div class="btn-row">
+      <button type="button" class="btn2" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>共有</button>
+      <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み（取り消す）":"このルートを歩いた"}</button>
+    </div>
+    <div class="hl">Googleマップのアプリで開くと、この線と同じ道を案内します（ブラウザ版では経由地が3つまでのため、道が少し変わることがあります）。</div>`; }
 
 function renderLists(){
   const cur = results.find(r=>r.key===selected);
   const d=$("#detail"); d.innerHTML="";
-  if(cur){ const c=document.createElement("section"); c.className="card"; c.style.setProperty("--c",THEMES[cur.key].color); c.innerHTML=detailHTML(cur); d.appendChild(c); }
+  if(cur){ const c=document.createElement("section"); c.className="card"; c.style.setProperty("--c",THEMES[cur.key].color); c.innerHTML=detailHTML(cur); d.appendChild(c);
+    c.querySelector('[data-act="share"]').onclick=()=>shareRoute(cur);
+    c.querySelector('[data-act="walked"]').onclick=()=>{ toggleLogged(cur); renderLists(); }; }
   const list=$("#results"); list.innerHTML="";
   const others = results.filter(r=>r.key!==selected);
   $("#othersTitle").hidden = !others.length;
   for(const rt of others){
     const c=document.createElement("button"); c.type="button"; c.className="card mini"; c.style.setProperty("--c",THEMES[rt.key].color);
     const dev=(rt.dist-rt.target)/rt.target*100;
-    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${fmt(stepsOf(rt))}歩</span><span class="dev num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`;
+    c.innerHTML=`<span class="dot"></span><strong>${esc(titleOf(rt))}</strong><span class="num">${inputMode==="time"?Math.round(rt.dist/WALK_MPM)+"分":fmt(stepsOf(rt))+"歩"}</span><span class="dev num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`;
     c.onclick=()=>{ select(rt.key, true); };
     list.appendChild(c); } }
 
@@ -765,11 +823,13 @@ function initMap(){
 }
 
 function init(){
-  [3000,5000,8000,10000,15000].forEach(v=>{ const b=document.createElement("button"); b.type="button"; b.className="pchip"; b.dataset.v=v; b.textContent=v.toLocaleString();
-    b.onclick=()=>{ $("#steps").value=v; updateEst(); clearResults(); savePrefs(); schedulePrefetch(); }; $("#presets").appendChild(b); });
-  $("#steps").addEventListener("input", ()=>{ updateEst(); savePrefs(); schedulePrefetch(); });
-  ["#todaySteps","#goalSteps"].forEach(id=>$(id).addEventListener("input", ()=>{ applyRemain(); savePrefs(); schedulePrefetch(); }));
-  document.querySelectorAll("#inputMode button").forEach(b=>b.onclick=()=>{ setInputMode(b.dataset.im); savePrefs(); });
+  ["#steps","#minutes"].forEach(id=>$(id).addEventListener("input", ()=>{ updateEst(); savePrefs(); schedulePrefetch(); }));
+  document.querySelectorAll("#inputMode button").forEach(b=>b.onclick=()=>{ setInputMode(b.dataset.im); clearResults(); savePrefs(); schedulePrefetch(); });
+  $("#depart").addEventListener("input", ()=>{ departEdited = !!$("#depart").value; $("#nowBtn").setAttribute("aria-pressed", !departEdited); updateTimeCtx(); clearResults(); });
+  $("#nowBtn").onclick=()=>{ departEdited=false; $("#depart").value=hhmm(new Date()); $("#nowBtn").setAttribute("aria-pressed", true); updateTimeCtx(); clearResults(); };
+  $("#depart").value = hhmm(new Date());
+  setInterval(()=>{ if(!departEdited){ $("#depart").value=hhmm(new Date()); updateTimeCtx(); } }, 30000);
+  $("#showWalked").addEventListener("change", ()=>{ drawWalked(); });
   const setMode = m => { mode=m; $("#mLoop").setAttribute("aria-pressed", m==="loop"); $("#mOne").setAttribute("aria-pressed", m==="one"); clearResults(); updateEst(); savePrefs(); schedulePrefetch(); };
   window._setMode = setMode;
   $("#mLoop").onclick=()=>setMode("loop"); $("#mOne").onclick=()=>setMode("one");
@@ -788,7 +848,7 @@ function init(){
 
   initStride();
 
-  loadFavs(); initMap(); loadPrefs();
+  loadFavs(); initMap(); loadLog(); setInputMode("steps"); loadPrefs();
   const home = favs[0];
   if(home) setStart(home.lat, home.lon, home.name), map.setView([home.lat,home.lon],14);
   else setStart(start.lat, start.lon, start.name);
@@ -804,39 +864,198 @@ function locate(then){
       const n=await reverseName(la,lo); if(n && start.lat===la){ start.name=n; $("#startName").textContent="出発: "+n; } },
     ()=>{ $("#status").textContent="現在地を取得できませんでした。位置情報の許可を確認するか、地図をタップしてください。"; if(then) then(); },{enableHighAccuracy:true,timeout:10000}); }
 
-/* ---------- "steps left to goal" mode, saved prefs, shortcut links ---------- */
-let inputMode="steps";
+/* ---------- steps / time input, saved prefs, links ---------- */
 function setInputMode(m){
-  inputMode=m;
-  document.querySelectorAll("#inputMode button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.im===m));
-  $("#remainBox").hidden = m!=="remain"; $("#remainLabel").hidden = m!=="remain"; $("#presets").hidden = m==="remain";
-  $("#steps").readOnly = m==="remain";
-  if(m==="remain") applyRemain(); else { $("#goBtn").disabled=false; updateEst(); } }
-function applyRemain(){
-  if(inputMode!=="remain") return;
-  const today = parseFloat($("#todaySteps").value)||0, goal = parseFloat($("#goalSteps").value)||10000;
-  const left = Math.max(0, Math.round(goal - today));
-  $("#steps").value = left; updateEst(); clearResults();
-  const st=$("#status");
-  if(left<500){ $("#goBtn").disabled=true; st.className="status done"; st.textContent = left===0 ? "今日の目標は達成済みです。おまけで歩くなら「歩数で指定」に切り替えてください。" : "目標まであと少しです。家のまわりを一周すれば届きます。"; }
-  else { $("#goBtn").disabled=false; if(st.classList.contains("done")){ st.className="status"; st.textContent=""; } } }
+  inputMode = m==="time" ? "time" : "steps";
+  document.querySelectorAll("#inputMode button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.im===inputMode));
+  $("#stepsRow").hidden = inputMode!=="steps"; $("#minRow").hidden = inputMode!=="time";
+  const box=$("#presets"); box.innerHTML="";
+  const vals = inputMode==="time" ? [15,30,45,60,90] : [3000,5000,8000,10000,15000];
+  vals.forEach(v=>{ const b=document.createElement("button"); b.type="button"; b.className="pchip"; b.dataset.v=v; b.textContent = inputMode==="time" ? v+"分" : v.toLocaleString();
+    b.onclick=()=>{ $(inputMode==="time"?"#minutes":"#steps").value=v; updateEst(); clearResults(); savePrefs(); schedulePrefetch(); }; box.appendChild(b); });
+  updateEst(); }
 const PREF_KEY="walkplanner.prefs";
-function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify({inputMode, steps:$("#steps").value, goal:$("#goalSteps").value, mode, today:$("#todaySteps").value, day:new Date().toDateString()})); }catch(e){} }
+function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify({inputMode, steps:$("#steps").value, minutes:$("#minutes").value, mode})); }catch(e){} }
 function loadPrefs(){
   try{ const p=JSON.parse(localStorage.getItem(PREF_KEY)||"null"); if(!p) return;
-    if(p.steps) $("#steps").value=p.steps; if(p.goal) $("#goalSteps").value=p.goal; if(p.today && p.day===new Date().toDateString()) $("#todaySteps").value=p.today;
+    if(p.steps) $("#steps").value=p.steps; if(p.minutes) $("#minutes").value=p.minutes;
     if(p.mode==="one") window._setMode("one");
-    setInputMode(p.inputMode==="remain"?"remain":"steps"); }catch(e){} }
-// e.g. ?today=6500&goal=10000&auto=1&here=1  or  ?steps=4000&auto=1
+    setInputMode(p.inputMode); }catch(e){} }
+// ?steps=6000 or ?min=30, &mode=one, &here=1 (start from current location), &auto=1 (search right away), ?r=… (shared route)
 function applyUrl(){
   const u = new URLSearchParams(location.search); if(![...u.keys()].length) return;
+  history.replaceState(null, "", location.pathname); // so a reload does not repeat it
+  if(u.has("r")){ openShared(u.get("r")); return; }
   if(u.get("mode")==="one" || u.get("mode")==="loop") window._setMode(u.get("mode"));
-  if(u.has("today")){ $("#todaySteps").value=Math.round(+u.get("today")||0); if(u.has("goal")) $("#goalSteps").value=Math.round(+u.get("goal")); setInputMode("remain"); }
-  else if(u.has("steps")){ setInputMode("steps"); $("#steps").value=Math.round(+u.get("steps")||8000); updateEst(); }
-  savePrefs();
-  history.replaceState(null, "", location.pathname); // so a reload does not re-run it
-  const go = ()=>{ if(u.get("auto")==="1" && !$("#goBtn").disabled) run(); };
+  if(u.has("min")){ setInputMode("time"); $("#minutes").value=Math.round(+u.get("min")||45); }
+  else if(u.has("steps")){ setInputMode("steps"); $("#steps").value=Math.round(+u.get("steps")||8000); }
+  updateEst(); savePrefs();
+  const go = ()=>{ if(u.get("auto")==="1") run(); };
   if(u.get("here")==="1") locate(go); else go(); }
+
+/* ---------- time of day: departure, opening hours, daylight ---------- */
+let departEdited=false;
+let walkCtx = {depart:new Date(), mid:new Date(), arrive:new Date(), dark:false};
+const hhmm = d => `${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`;
+function departDate(){
+  const now=new Date(); if(!departEdited || !$("#depart").value) return now;
+  const [h,m]=$("#depart").value.split(":").map(Number); const d=new Date(now); d.setHours(h,m,0,0);
+  if(d.getTime() < now.getTime()-60*60000) d.setDate(d.getDate()+1);   // a time already past means tomorrow
+  return d; }
+function setWalkCtx(target){
+  const depart=departDate(), dur=target/WALK_MPM*60000;
+  const mid=new Date(depart.getTime()+dur/2), arrive=new Date(depart.getTime()+dur);
+  const sun=sunTimes(mid, start.lat, start.lon);
+  walkCtx = {depart, mid, arrive, dark: mid < sun.rise || mid > new Date(sun.set.getTime()+15*60000), sun}; }
+function updateTimeCtx(){
+  if(!$("#timeCtx")) return;
+  setWalkCtx(targetMeters());
+  const s=walkCtx.sun;
+  $("#timeCtx").textContent = walkCtx.dark ? `日没後（日の入り ${hhmm(s.set)}）` : `日の入り ${hhmm(s.set)}`; }
+// sunrise / sunset (NOAA approximation), good to a few minutes
+function sunTimes(date, lat, lon){
+  const rad=Math.PI/180, y=date.getFullYear(), start0=new Date(y,0,0), doy=Math.floor((date-start0)/864e5);
+  const g=2*Math.PI/365*(doy-1);
+  const eqt=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)-0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+  const decl=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+  const ha=Math.acos(Math.cos(90.833*rad)/(Math.cos(lat*rad)*Math.cos(decl))-Math.tan(lat*rad)*Math.tan(decl))/rad;
+  const noon=720-4*lon-eqt, base=Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
+  return {rise:new Date(base+(noon-4*ha)*60000), set:new Date(base+(noon+4*ha)*60000)}; }
+
+// shop types and their usual hours when the shop has no opening_hours tag (minutes from midnight; >1440 = past midnight)
+function shopType(t){
+  const a=t.amenity||"", sh=t.shop||"";
+  if(sh==="convenience") return 4;
+  if(sh==="supermarket") return 5;
+  if(a==="fast_food") return 6;
+  if(a==="restaurant"||a==="food_court"||a==="ice_cream") return 1;
+  if(a==="cafe") return 2;
+  if(a==="bar"||a==="pub") return 3;
+  return 0; }
+const SHOP_HOURS = {0:[[600,1200]], 1:[[690,1320]], 2:[[480,1200]], 3:[[1020,1560]], 4:[[0,1440]], 5:[[540,1320]], 6:[[420,1380]]};
+const DAYS=["Mo","Tu","We","Th","Fr","Sa","Su"];
+const ohCache=new Map();
+// parses the common opening_hours forms ("Mo-Fr 10:00-20:00; Sa,Su 11:00-19:00", "24/7", "17:00-02:00").
+// Returns per-weekday interval lists, or null when the value is too unusual to trust.
+function parseOH(str){
+  if(ohCache.has(str)) return ohCache.get(str);
+  let week=null;
+  try{
+    const s=str.trim();
+    if(s==="24/7"){ week=Array(7).fill([[0,1440]]); }
+    else{
+      week=Array(7).fill(null);
+      for(let rule of s.split(/;|\|\|/)){
+        rule=rule.trim(); if(!rule) continue;
+        if(/^(PH|SH)\b/.test(rule) || /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|week|easter)\b/.test(rule)) continue;
+        const m=rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?\s*,?\s*)+)?(?:,?\s*PH)?\s*(.*)$/);
+        let days=[0,1,2,3,4,5,6];
+        if(m[1]){ days=[]; for(const part of m[1].split(",")){ const pp=part.trim(); if(!pp) continue; const [a,b]=pp.split("-"); const ia=DAYS.indexOf(a), ib=b?DAYS.indexOf(b):ia; if(ia<0||ib<0) throw 0;
+            for(let k=ia;;k=(k+1)%7){ days.push(k); if(k===ib) break; } } }
+        const rest=(m[2]||"").trim().replace(/"[^"]*"/g,"").trim();
+        let iv=[];
+        if(/^(off|closed)$/i.test(rest)) iv=[];
+        else{
+          for(const r of rest.split(",")){ const t=r.trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\+?$|^(\d{1,2}):(\d{2})\+$/); if(!t) throw 0;
+            if(t[5]){ const a=+t[5]*60+ +t[6]; iv.push([a,a+180]); continue; }
+            const a=+t[1]*60+ +t[2]; let b=+t[3]*60+ +t[4]; if(b<=a) b+=1440; iv.push([a,b]); } }
+        for(const d of days) week[d]=iv; }
+      if(week.every(x=>x===null)) week=null; }
+  }catch(e){ week=null; }
+  ohCache.set(str, week); return week; }
+function inIv(iv, mins){ return iv.some(([a,b])=>mins>=a && mins<b); }
+function isOpen(oh, fallback, when){
+  const mins=when.getHours()*60+when.getMinutes(), dow=(when.getDay()+6)%7, prev=(dow+6)%7;
+  const week = oh ? parseOH(oh) : null;
+  if(week){
+    const today=week[dow], yest=week[prev];
+    if(today===null && yest===null) return inIv(fallback, mins) || inIv(fallback, mins+1440);
+    return (today?inIv(today,mins):false) || (yest?inIv(yest,mins+1440):false); }
+  return inIv(fallback, mins) || inIv(fallback, mins+1440); }
+
+/* ---------- sharing ---------- */
+function shareURL(rt){
+  const P=proj(start);
+  const w=rt.wps.map(p=>{ const l=P.ll(p); return `${l.lat.toFixed(5)},${l.lon.toFixed(5)}`; }).join(";");
+  const payload=[rt.key, mode, `${start.lat.toFixed(5)},${start.lon.toFixed(5)}`, w, start.name].join("|");
+  return `${location.origin}${location.pathname}?r=${encodeURIComponent(payload)}`; }
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2400); }
+async function shareRoute(rt){
+  const url=shareURL(rt), min=Math.round(rt.dist/WALK_MPM);
+  const text=`${start.name}から「${titleOf(rt)}」${(rt.dist/1000).toFixed(1)}km・約${min}分のお散歩ルート`;
+  if(navigator.share){ try{ await navigator.share({title:"歩数ルート", text, url}); return; }catch(e){ if(e && e.name==="AbortError") return; } }
+  try{ await navigator.clipboard.writeText(`${text}\n${url}`); toast("リンクをコピーしました"); }
+  catch(e){ $("#status").className="status"; $("#status").textContent=url; toast("リンクを表示しました。長押しでコピーできます"); } }
+async function openShared(str){
+  try{
+    const [key, m, s0, w, name] = str.split("|");
+    if(!THEMES[key]) throw 0;
+    window._setMode(m==="one"?"one":"loop");
+    const [la,lo]=s0.split(",").map(Number); setStart(la, lo, name||"共有された出発地"); map.setView([la,lo],14);
+    const wll = w.split(";").filter(Boolean).map(x=>{ const [a,b]=x.split(",").map(Number); return {lat:a, lon:b}; });
+    $("#status").className="status"; $("#status").textContent="共有されたルートを読み込み中…";
+    const P=proj(start); setWalkCtx(0);
+    const res = await osrm([start, ...wll, ...(mode==="loop"?[start]:[])]);
+    const rt = {key, ...res, wps:wll.map(l=>P.xy(l)), target:res.dist, shared:true, info:null};
+    setWalkCtx(res.dist);
+    results=[rt]; showPlaceholders([key]); drawRoute(rt); fillChip(rt); select(key,false);
+    $("#status").textContent="共有されたルートです。条件を変えて「ルートを探す」を押すと、自分用のルートも作れます。";
+    try{ const D=await loadPOIs(P, Math.max(1500, polyLen(rt.coords.map(c=>P.xy(c)))/2)); rt.info=await analyze(rt,D,P); if(results[0]===rt){ fillChip(rt); renderLists(); } }catch(e){}
+  }catch(e){ $("#status").className="status err"; $("#status").textContent="共有リンクを読み込めませんでした。"; } }
+
+/* ---------- walk log ---------- */
+const LOG_KEY="walkplanner.log";
+let walkLog=[], walkedCells=new Set(), walkedLayer=null, exploredM=0;
+function freshPct(cells){ if(!cells||!cells.size) return 100; let f=0; for(const c of cells) if(!walkedCells.has(c)) f++; return Math.round(f/cells.size*100); }
+const CELL=0.0004; // ≈40 m
+const cellKey=(lat,lon)=>`${Math.floor(lat/CELL)},${Math.floor(lon/(CELL*1.22))}`;
+function encPoly(pts){ let out="", pl=0, pn=0; const enc=v=>{ v=v<0?~(v<<1):(v<<1); let s=""; while(v>=0x20){ s+=String.fromCharCode((0x20|(v&0x1f))+63); v>>=5; } return s+String.fromCharCode(v+63); };
+  for(const p of pts){ const la=Math.round(p.lat*1e5), lo=Math.round(p.lon*1e5); out+=enc(la-pl)+enc(lo-pn); pl=la; pn=lo; } return out; }
+function decPoly(str){ const pts=[]; let i=0, la=0, lo=0;
+  const dec=()=>{ let r=0, sh=0, b; do{ b=str.charCodeAt(i++)-63; r|=(b&0x1f)<<sh; sh+=5; }while(b>=0x20); return (r&1)?~(r>>1):(r>>1); };
+  while(i<str.length){ la+=dec(); lo+=dec(); pts.push({lat:la/1e5, lon:lo/1e5}); } return pts; }
+const routeId = rt => rt.coords.length ? encPoly([rt.coords[0], rt.coords[Math.floor(rt.coords.length/2)], rt.coords[rt.coords.length-1]])+Math.round(rt.dist) : "";
+function loadLog(){ try{ walkLog=JSON.parse(localStorage.getItem(LOG_KEY)||"[]"); if(!Array.isArray(walkLog)) walkLog=[]; }catch(e){ walkLog=[]; } rebuildCells(); renderLog(); drawWalked(); }
+function saveLog(){ try{ localStorage.setItem(LOG_KEY, JSON.stringify(walkLog)); }catch(e){ toast("記録を保存できませんでした（容量不足）"); } }
+function rebuildCells(){
+  walkedCells=new Set(); exploredM=0;
+  for(const w of [...walkLog].reverse()){ const pts=decPoly(w.e); if(pts.length<2) continue; const P=proj(pts[0]);
+    const keys = resample(pts.map(p=>P.xy(p)),10).map(q=>{ const l=P.ll(q); return cellKey(l.lat,l.lon); });
+    for(const k of keys) if(!walkedCells.has(k)) exploredM+=10;   // length of this walk on roads not walked before
+    keys.forEach(k=>walkedCells.add(k)); } }
+const isLogged = rt => walkLog.some(w=>w.id===routeId(rt));
+function toggleLogged(rt){
+  const id=routeId(rt), i=walkLog.findIndex(w=>w.id===id);
+  if(i>=0){ walkLog.splice(i,1); toast("記録を取り消しました"); }
+  else{
+    const P=proj(start), slim=[]; let last=null;
+    for(const c of rt.coords){ const q=P.xy(c); if(!last || dist(q,last)>=15){ slim.push(c); last=q; } }
+    slim.push(rt.coords[rt.coords.length-1]);
+    walkLog.unshift({id, d:new Date().toISOString(), k:rt.key, n:start.name, m:Math.round(rt.dist), s:Math.round(stepsOf(rt)), e:encPoly(slim)});
+    toast("歩いた道に記録しました"); }
+  saveLog(); rebuildCells(); renderLog(); drawWalked(); }
+function drawWalked(){
+  if(!map) return;
+  if(walkedLayer){ map.removeLayer(walkedLayer); walkedLayer=null; }
+  if(!$("#showWalked").checked || !walkLog.length) return;
+  walkedLayer = L.layerGroup(walkLog.map(w=>L.polyline(decPoly(w.e).map(p=>[p.lat,p.lon]),{color:"#14181f",weight:3,opacity:.35,dashArray:"1 6",lineCap:"round",interactive:false}))).addTo(map);
+  walkedLayer.eachLayer(l=>l.bringToBack()); }
+function renderLog(){
+  const now=new Date(), month=walkLog.filter(w=>{ const d=new Date(w.d); return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth(); });
+  const km = arr => (arr.reduce((a,w)=>a+w.m,0)/1000).toFixed(1);
+  $("#logStats").innerHTML = `
+    <div><span>合計</span><b>${km(walkLog)}<small>km</small></b><span>${walkLog.length}回</span></div>
+    <div><span>今月</span><b>${km(month)}<small>km</small></b><span>${fmt(month.reduce((a,w)=>a+w.s,0))}歩</span></div>
+    <div><span>開拓した道</span><b>${(exploredM/1000).toFixed(1)}<small>km</small></b><span>重なりを除く</span></div>`;
+  const list=$("#logList"); list.innerHTML="";
+  if(!walkLog.length){ list.innerHTML='<div class="empty">まだ記録はありません。ルートを歩いたら、詳細カードの「このルートを歩いた」を押してください。</div>'; return; }
+  walkLog.slice(0,12).forEach(w=>{
+    const d=new Date(w.d), row=document.createElement("div"); row.className="log-item"; row.style.setProperty("--c",(THEMES[w.k]||{}).color||"#888");
+    row.innerHTML=`<span class="dot"></span><button type="button" class="t">${esc((THEMES[w.k]||{name:"ルート"}).name)}・${esc(w.n||"")}</button><span class="d num">${d.getMonth()+1}/${d.getDate()}　${(w.m/1000).toFixed(1)}km</span><button type="button" class="x" aria-label="この記録を削除">×</button>`;
+    row.querySelector(".t").onclick=()=>{ const pts=decPoly(w.e).map(p=>[p.lat,p.lon]); if(pts.length){ map.fitBounds(L.latLngBounds(pts),{padding:[40,40]}); $("#stage").scrollIntoView({behavior:"smooth"}); } };
+    row.querySelector(".x").onclick=()=>{ walkLog=walkLog.filter(x=>x!==w); saveLog(); rebuildCells(); renderLog(); drawWalked(); if(results.length) renderLists(); };
+    list.appendChild(row); }); }
+
 init();
 </script>
 </body>
