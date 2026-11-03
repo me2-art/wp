@@ -173,7 +173,13 @@ details.more[open] summary{margin-bottom:8px}
 .leaflet-container{font-family:var(--f-body);background:var(--soft)}
 .leaflet-control-attribution{font-size:9px}
 .start-pin{width:22px;height:22px;border-radius:50%;background:var(--btn);border:4px solid var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.35)}
-.wp-pin{width:12px;height:12px;border-radius:50%;background:var(--surface);border:3px solid var(--c)}
+.wp-pin{width:22px;height:22px;border-radius:50%;background:var(--c);color:#fff;border:2px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.35);display:grid;place-items:center;font:700 11px/1 var(--f-num)}
+.stops{display:flex;flex-direction:column;gap:6px}
+.stops .lbl{font-size:10px;letter-spacing:.06em;color:var(--muted)}
+.stops ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.stops li{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.stops .no{width:20px;height:20px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font:700 10px/1 var(--f-num);flex:none}
+.stops .no.back{background:var(--soft);color:var(--ink)}
 
 @media (max-width:860px){
   .app{grid-template-columns:1fr;height:auto}
@@ -271,7 +277,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-7</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-8</div>
   </aside>
 </div>
 
@@ -679,6 +685,22 @@ async function designRoute(key, D, P, target, elevGrid){
   if(!best) return null;
   return {key, ...best}; }
 
+/* ---------- stops handed to Google Maps ---------- */
+// The route is built through rt.wps (named spots or shop clusters). Google gets exactly these points,
+// so its stops match what the card lists; each is labelled with its own name or the nearest named place.
+function stopNames(rt, D){
+  return rt.wps.map((p,i)=>{
+    if(p.poi && p.poi.name) return p.poi.name;
+    let best=null, bd=1e9;
+    for(const cat of ["sight","green","station"]) for(const q of D.grids[cat].near(p.x,p.y,220)) if(q.name){ const d=dist(p,q); if(d<bd){ bd=d; best=q; } }
+    if(best) return best.name+"付近";
+    if(rt.key==="shop") return "お店が集まる通り";
+    if(rt.key==="water") return "川沿い";
+    return null; }); }
+function stopsFor(rt){ // [{lat,lon,label}] in walking order; the last one is the destination for one-way routes
+  const P=proj(start), names=(rt.info&&rt.info.stops)||[];
+  return rt.wps.map((p,i)=>{ const l=P.ll(p); return {lat:l.lat, lon:l.lon, label:names[i] || `経由地${i+1}`}; }); }
+
 /* ---------- analysis ---------- */
 async function analyze(rt, D, P){
   const xy = rt.coords.map(c=>P.xy(c));
@@ -696,7 +718,8 @@ async function analyze(rt, D, P){
   const pts = resample(xy, L/(n-1)).slice(0,100).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   let asc=0; for(let i=1;i<el.length;i++){ const d=el[i]-el[i-1]; if(d>0) asc+=d; }
-  return {shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
+  const stops = stopNames(rt, D);
+  return {stops, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
@@ -811,22 +834,13 @@ function spark(el, color){
   const W=300, H=40, pts = el.map((v,i)=>`${(i/(el.length-1)*W).toFixed(1)},${(H-2-(v-lo)/span*(H-8)).toFixed(1)}`);
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="標高の変化"><polygon points="0,${H} ${pts.join(" ")} ${W},${H}" fill="${color}" fill-opacity=".14"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; }
 
-// Google Maps picks its own path between the points it is given, so hand it points taken from the
-// route itself (evenly spaced along it) — then its navigation follows the line shown here.
+// Google Maps gets the same points the route was built through (at most 3), so its stops match the card.
+// Between stops Google picks its own streets, which can differ slightly from the drawn line.
 function gmapsLink(rt){
-  const P=proj(start), xy=rt.coords.map(c=>P.xy(c)), total=polyLen(xy);
-  const o=`${start.lat.toFixed(6)},${start.lon.toFixed(6)}`;
-  const n = 8, picks=[];
-  let acc=0, k=1;
-  for(let i=1;i<xy.length && k<=n;i++){
-    const seg=dist(xy[i-1],xy[i]);
-    while(k<=n && acc+seg >= total*k/(n+1)){ const t=(total*k/(n+1)-acc)/(seg||1);
-      const q={x:xy[i-1].x+(xy[i].x-xy[i-1].x)*t, y:xy[i-1].y+(xy[i].y-xy[i-1].y)*t}; const l=P.ll(q);
-      picks.push(`${l.lat.toFixed(6)},${l.lon.toFixed(6)}`); k++; }
-    acc+=seg; }
-  const end = rt.coords[rt.coords.length-1];
-  const dest = mode==="loop" ? o : `${end.lat.toFixed(6)},${end.lon.toFixed(6)}`;
-  return `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${dest}&waypoints=${encodeURIComponent(picks.join("|"))}&travelmode=walking`; }
+  const f = v => v.toFixed(6), o = `${f(start.lat)},${f(start.lon)}`;
+  const st = stopsFor(rt).map(s=>`${f(s.lat)},${f(s.lon)}`);
+  const dest = mode==="loop" ? o : (st.pop() || o);
+  return `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${dest}${st.length?"&waypoints="+encodeURIComponent(st.join("|")):""}&travelmode=walking`; }
 
 function detailHTML(rt){
   const th=THEMES[rt.key], i=rt.info, dev=(rt.dist-rt.target)/rt.target*100;
@@ -845,7 +859,7 @@ function detailHTML(rt){
       <span class="tag">水辺 <span class="num">${Math.round(i.water*100)}%</span></span><span class="tag">登り計 <span class="num">${Math.round(i.asc)}m</span></span>
       ${walkLog.length?`<span class="tag">初めての道 <span class="num">${freshPct(i.cells)}%</span></span>`:""}
     </div>
-    ${i.named.length?`<div class="hl">通る場所　<b>${i.named.slice(0,6).map(esc).join("、")}</b></div>`:""}` : `<div class="hl">周辺の情報を読み込み中…</div>`;
+    ${i.named.length?`<div class="hl">途中で通る場所　<b>${i.named.slice(0,6).map(esc).join("、")}</b></div>`:""}` : `<div class="hl">周辺の情報を読み込み中…</div>`;
   return `
     <div class="card-h"><span class="bar"></span><strong>${esc(titleOf(rt))}<span class="desc">${esc(th.desc)}${rt.shared?" ・ 共有されたルート":` ・ 目標比 <span class="num">${dev>=0?"+":""}${dev.toFixed(0)}%</span>`}</span></strong></div>
     <div class="stats">
@@ -858,12 +872,17 @@ function detailHTML(rt){
     ${i?spark(i.el, th.color):""}
     ${tags}
     ${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}
+    <div class="stops"><span class="lbl">Googleマップの経由地</span>${stopsHTML(rt)}</div>
     <a class="nav" href="${gmapsLink(rt)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 21 3l-8 18-2-8-8-2Z"/></svg>Googleマップでナビ開始</a>
     <div class="btn-row">
       <button type="button" class="btn2" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>共有</button>
       <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み（取り消す）":"このルートを歩いた"}</button>
     </div>
-    <div class="hl">Googleマップのアプリで開くと、この線と同じ道を案内します（ブラウザ版では経由地が3つまでのため、道が少し変わることがあります）。</div>`; }
+    <div class="hl">Googleマップには上の番号の地点を順に渡します。地点と地点の間の道はGoogleが選ぶので、地図の線と少し違う道になることがあります。</div>`; }
+function stopsHTML(rt){
+  const st = stopsFor(rt), oneWay = mode==="one";
+  const items = st.map((s,i)=>`<li><span class="no" style="--c:${THEMES[rt.key].color}">${oneWay && i===st.length-1 ? "着" : i+1}</span>${esc(s.label)}</li>`);
+  return `<ol>${items.join("")}${oneWay?"":`<li><span class="no back">戻</span>${esc(start.name)}</li>`}</ol>`; }
 
 function renderLists(){
   const cur = results.find(r=>r.key===selected);
@@ -897,9 +916,10 @@ function select(key, scrollToMap){
   const rt = results.find(r=>r.key===key); if(!rt) return;
   poiLayer.clearLayers();
   const P=proj(start);
-  rt.wps.forEach(p=>{ const l=P.ll(p);
-    L.marker([l.lat,l.lon],{icon:L.divIcon({className:"",iconSize:[12,12],iconAnchor:[6,6],html:`<div class="wp-pin" style="--c:${THEMES[key].color}"></div>`}),interactive:true})
-      .bindTooltip(p.poi&&p.poi.name?p.poi.name:"経由地").addTo(poiLayer); });
+  const st = stopsFor(rt);
+  st.forEach((s,i)=>{ const lab = mode==="one" && i===st.length-1 ? "着" : String(i+1);
+    L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div class="wp-pin" style="--c:${THEMES[key].color}">${lab}</div>`}),interactive:true})
+      .bindTooltip(s.label).addTo(poiLayer); });
   fitRoute(key);
   renderLists();
   if(scrollToMap) $("#stage").scrollIntoView({behavior:"smooth", block:"start"}); }
