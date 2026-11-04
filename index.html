@@ -96,6 +96,11 @@ button{cursor:pointer}
 .seg-sm button{padding:6px 12px;font-size:12px}
 .big-in{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em;color:var(--ink)}
 .big-in:focus-visible{box-shadow:0 2px 0 var(--ink)}
+.today{display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:18px;background:var(--btn);color:var(--btn-ink)}
+.today .eyebrow{font-size:10px;letter-spacing:.14em;font-weight:700;opacity:.7}
+.today .ttl{font-size:17px;font-weight:700;line-height:1.35}
+.today .why{font-size:12px;opacity:.85}
+.today button{align-self:flex-start;margin-top:4px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:999px;padding:5px 12px;font-size:12px}
 .dest{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:var(--soft)}
 .dest-row{display:flex;gap:6px;align-items:center}
 .dest-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:7px 10px;font-size:16px}
@@ -108,7 +113,7 @@ button{cursor:pointer}
 .dest-pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--btn);border:3px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,.35);display:grid;place-items:center}
 .dest-pin span{transform:rotate(45deg);color:var(--btn-ink);font:700 11px/1 var(--f-body)}
 .depart{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
-.depart input{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:5px 8px;font-family:var(--f-num);font-size:15px;color:var(--ink)}
+.depart input{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:5px 8px;font-family:var(--f-num);font-size:16px;color:var(--ink)}
 .depart .pchip{padding:3px 10px}
 .timectx{font-size:12px;color:var(--muted)}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap}
@@ -291,6 +296,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="status" id="status" aria-live="polite"></div>
     </section>
 
+    <section class="today" id="today" hidden aria-live="polite"></section>
     <div id="detail"></div>
     <div class="sec-title" id="othersTitle" hidden>ほかのルート</div>
     <div class="list" id="results"></div>
@@ -302,7 +308,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: Open-Meteo（約90mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/03-12</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/04-1</div>
   </aside>
 </div>
 
@@ -313,7 +319,10 @@ details.more[open] summary{margin-bottom:8px}
 "use strict";
 const $ = s => document.querySelector(s);
 const THEMES = {
-  direct: {name:"最短ルート",       color:"#14181f", desc:"いちばん近い道で行き先へ", direct:true},
+  direct: {name:"最短ルート",       color:"#0f766e", desc:"いちばん近い道で行き先へ", direct:true},
+  cafe:   {name:"カフェ休憩つき",   color:"#8a5a44", desc:"カフェの多い道を通る", cat:"cafe"},
+  bakery: {name:"パン屋めぐり",     color:"#b7791f", desc:"パン屋さんをはしごする", cat:"bakery"},
+  bar:    {name:"夜の飲み歩き",     color:"#b4235a", desc:"バーや居酒屋の多い通りへ", cat:"bar"},
   shop:   {name:"商店街・グルメ",   color:"#ef6a2f", desc:"お店の多い通りを抜ける", cat:"shop"},
   sight:  {name:"寺社・名所",       color:"#9351d6", desc:"神社仏閣や見どころを経由", cat:"sight"},
   green:  {name:"公園・緑",         color:"#23995d", desc:"公園や庭園をつないで歩く", cat:"green"},
@@ -327,6 +336,10 @@ const THEMES = {
 const LOOP_ORDER = ["shop","sight","green","water","hill","flat"];
 const ONE_ORDER  = ["station","shop","sight","green","water","bath","hill","flat"];
 const DEST_ORDER = ["direct","shop","sight","green","water","hill","flat","free"];
+// extra themes only when they make sense for the time of day
+function timedThemes(when){ const h=when.getHours(), out=[];
+  if(h>=7 && h<16) out.push("bakery"); if(h>=8 && h<19) out.push("cafe"); if(h>=17 || h<1) out.push("bar"); return out; }
+function withTimed(order, when){ const i=order.indexOf("shop"); const extra=timedThemes(when); return i<0 ? [...order, ...extra] : [...order.slice(0,i+1), ...extra, ...order.slice(i+1)]; }
 
 let mode = "loop";
 let start = {lat:35.69665, lon:139.81415, name:"錦糸町駅"};
@@ -388,9 +401,51 @@ async function osrm(llpts){
   if(j.code!=="Ok"||!j.routes||!j.routes.length) throw new Error("ルートが見つかりません");
   return {dist:j.routes[0].distance, coords:j.routes[0].geometry.coordinates.map(([lon,lat])=>({lat,lon}))}; }
 
-async function elevations(ll){ // up to 100 points
-  const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${ll.map(p=>p.lat.toFixed(5)).join(",")}&longitude=${ll.map(p=>p.lon.toFixed(5)).join(",")}`);
-  return j.elevation; }
+/* Elevation: 国土地理院 DEM tiles (ground height, 5 m mesh; 10 m where 5 m is missing), read from PNG tiles.
+   Open-Meteo (90 m, includes buildings and elevated roads) is only a fallback. */
+const GSI_DEM = [
+  {u:"https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/{z}/{x}/{y}.png", z:15},
+  {u:"https://cyberjapandata.gsi.go.jp/xyz/dem5b_png/{z}/{x}/{y}.png", z:15},
+  {u:"https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png",   z:14} ];
+const demCache = new Map();
+function demTile(src, x, y){
+  const key = src.u+"/"+x+"/"+y; if(demCache.has(key)) return demCache.get(key);
+  const job = (async()=>{
+    const r = await fetchT(src.u.replace("{z}",src.z).replace("{x}",x).replace("{y}",y), {}, 12000);
+    if(!r.ok) return null;
+    const bmp = await createImageBitmap(await r.blob(), {colorSpaceConversion:"none", premultiplyAlpha:"none"});
+    const c = document.createElement("canvas"); c.width=256; c.height=256;
+    const g = c.getContext("2d", {willReadFrequently:true}); g.drawImage(bmp,0,0);
+    return g.getImageData(0,0,256,256).data; })().catch(()=>null);
+  demCache.set(key, job); return job; }
+function demValue(d, px, py){ const i=(py*256+px)*4, r=d[i], g=d[i+1], b=d[i+2];
+  if(r===128 && g===0 && b===0) return null;             // no data
+  let v = r*65536 + g*256 + b; if(v >= 8388608) v -= 16777216; return v*0.01; }
+async function gsiElev(p){
+  for(const src of GSI_DEM){
+    const n=Math.pow(2,src.z), lr=p.lat*Math.PI/180;
+    const fx=(p.lon+180)/360*n, fy=(1-Math.log(Math.tan(lr)+1/Math.cos(lr))/Math.PI)/2*n, x=Math.floor(fx), y=Math.floor(fy);
+    const d = await demTile(src, x, y); if(!d) continue;
+    const v = demValue(d, Math.min(255,Math.floor((fx-x)*256)), Math.min(255,Math.floor((fy-y)*256)));
+    if(v!==null) return v; }
+  return null; }
+let elevSource = "国土地理院";
+async function elevations(ll){
+  const vals = await Promise.all(ll.map(gsiElev));
+  const miss = vals.map((v,i)=>v===null?i:-1).filter(i=>i>=0);
+  if(miss.length){
+    elevSource = miss.length===vals.length ? "Open-Meteo" : "国土地理院＋Open-Meteo";
+    for(let k=0;k<miss.length;k+=100){
+      const part = miss.slice(k,k+100).map(i=>ll[i]);
+      const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${part.map(p=>p.lat.toFixed(5)).join(",")}&longitude=${part.map(p=>p.lon.toFixed(5)).join(",")}`);
+      miss.slice(k,k+100).forEach((i,m)=>{ vals[i]=j.elevation[m]; }); } }
+  else elevSource = "国土地理院";
+  return vals; }
+// total climb, ignoring wiggles under 1 m (hysteresis) after a light median smoothing
+function climbOf(el){
+  if(el.length<3) return 0;
+  const sm = el.map((v,i)=>{ const w=[el[i-1]??v, v, el[i+1]??v].sort((a,b)=>a-b); return w[1]; });
+  let asc=0, ref=sm[0]; for(const v of sm){ if(v>ref+1){ asc+=v-ref; ref=v; } else if(v<ref-1) ref=v; } return asc; }
 
 
 
@@ -656,12 +711,14 @@ function getRaw(R){
 
 async function loadPOIs(P, R){
   const raw = await getRaw(R);
-  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[]};
+  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]};
   const lim = R + 300, mid = walkCtx.mid, arrive = walkCtx.arrive;
   for(const it of raw.items){
     const q = P.xy({lat:it[1], lon:it[2]}); if(Math.hypot(q.x,q.y)>lim) continue;
     const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||"", cat};
-    if(cat==="shop"){ cats.shopAll.push(p); if(isOpen(p.oh, SHOP_HOURS[p.code], mid)) cats.shop.push(p); continue; }
+    if(cat==="shop"){ cats.shopAll.push(p);
+      if(isOpen(p.oh, SHOP_HOURS[p.code], mid)){ cats.shop.push(p); if(p.code===2) cats.cafe.push(p); else if(p.code===7) cats.bakery.push(p); else if(p.code===3) cats.bar.push(p); }
+      continue; }
     if(cat==="sight" && p.code===1 && !isOpen(p.oh, [[600,1020]], mid)) continue;   // museums: 10-17 unless tagged
     if(cat==="bath" && !isOpen(p.oh, [[900,1410]], arrive)) continue;               // sento: 15:00-23:30 unless tagged
     cats[cat].push(p); }
@@ -670,7 +727,7 @@ async function loadPOIs(P, R){
   const grids = {};
   for(const k in cats){ const g=new Grid(100); cats[k].forEach(p=>g.add(p)); grids[k]=g; }
   // local density (for snapping onto clusters such as shopping streets)
-  for(const k of ["shop","sight","green","water"]) for(const p of cats[k]) p.dens = grids[k].near(p.x,p.y,130).length;
+  for(const k of ["shop","sight","green","water","cafe","bakery","bar"]) for(const p of cats[k]) p.dens = grids[k].near(p.x,p.y,130).length;
   return {cats, grids}; }
 
 function searchRadius(target){ return Math.min(mode==="loop" ? reachRadius(target)*1.5+300 : reachRadius(target)*1.25+300, 6000); }
@@ -896,19 +953,20 @@ async function analyze(rt, D, P){
   const named = [];
   for(const p of [...streets, ...sights.filter(p=>p.name), ...greens.filter(p=>p.name)].sort((a,b)=>a._i-b._i)) if(p.name && !named.includes(p.name)) named.push(p.name);
   // elevation profile
-  const n = Math.min(100, Math.max(10, Math.round(rt.dist/60)));
-  const L = polyLen(xy), prof=[];
-  const pts = resample(xy, L/(n-1)).slice(0,100).map(q=>P.ll(q));
+  const n = Math.min(300, Math.max(20, Math.round(rt.dist/20)));   // a point every ~20 m
+  const L = polyLen(xy);
+  const pts = resample(xy, L/(n-1)).slice(0,300).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
-  let asc=0; for(let i=1;i<el.length;i++){ const d=el[i]-el[i-1]; if(d>0) asc+=d; }
-  return {allStops, spots, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
+  const asc = climbOf(el);
+  const cafes = along("cafe",35).length, bakeries = along("bakery",35).length, bars = along("bar",35).length;
+  return {allStops, spots, cafes, bakeries, bars, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
 
 /* ---------- main ---------- */
 let routeErr=null, lastRun=null;
-function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
+function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
 
 // checks each outside service with a tiny request and lists what answered
 async function runDiagnostics(){
@@ -923,15 +981,37 @@ async function runDiagnostics(){
   for(const u of OVERPASS) lines.push(await test("予備 "+new URL(u).host, u, post));
   const o=start, d=proj(start).ll({x:300,y:300});
   lines.push(await test("ルート検索", `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${o.lon},${o.lat};${d.lon},${d.lat}?overview=false`));
-  lines.push(await test("標高", `https://api.open-meteo.com/v1/elevation?latitude=${o.lat}&longitude=${o.lon}`));
+  { const n=Math.pow(2,15), lr=o.lat*Math.PI/180, x=Math.floor((o.lon+180)/360*n), y=Math.floor((1-Math.log(Math.tan(lr)+1/Math.cos(lr))/Math.PI)/2*n);
+    lines.push(await test("標高（国土地理院）", `https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/15/${x}/${y}.png`)); }
+  lines.push(await test("標高（予備）", `https://api.open-meteo.com/v1/elevation?latitude=${o.lat}&longitude=${o.lon}`));
   st.innerHTML = lines.map(esc).join("<br>") + "<br><small>このスクショを送ってもらえれば原因を特定できます。</small>"; }
 
-async function run(){
+// 今日の1本: one theme picked from weekday and time of day, built as soon as the tool opens
+function todayPick(){
+  const now=new Date(), h=now.getHours(), dow=now.getDay(), W="日月火水木金土"[dow]+"曜", wkend = dow===0||dow===6;
+  let sun=null; try{ sun=sunTimes(now, start.lat, start.lon); }catch(e){}
+  const dusk = sun && now >= new Date(sun.set.getTime()-60*60000) && now <= new Date(sun.set.getTime()+15*60000);
+  if(h>=5 && h<9)  return wkend ? {key:"bakery", why:`${W}の朝は、焼きたてのパン屋さんへ`} : {key:"green", why:`${W}の朝は、公園の緑の中を歩いて目を覚ます`};
+  if(h>=9 && h<11) return wkend ? {key:"cafe", why:`${W}の午前は、カフェで一息つくコース`} : {key:"sight", why:`${W}の午前は、空いている寺社や名所へ`};
+  if(h>=11 && h<14) return {key:"shop", why:"お昼どき。商店街でランチの店を探しながら"};
+  if(dusk) return {key:"water", why:`もうすぐ日の入り（${hhmm(sun.set)}）。川沿いで夕焼けを見ながら`};
+  if(h>=14 && h<17) return wkend ? {key:"sight", why:`${W}の午後は、寺社や名所めぐり`} : {key:"cafe", why:"午後のひと休みに、カフェ休憩つき"};
+  if(h>=17 && h<19) return {key:"shop", why:"夕方の商店街がいちばんにぎわう時間"};
+  if(h>=19 && h<23) return (dow===5||dow===6) ? {key:"bar", why:`${W}の夜は、飲み歩きルートで一軒寄り道`} : {key:"flat", why:`${W}の夜は、坂の少ない道で軽めに`};
+  return {key:"flat", why:"夜遅いので、坂の少ない道で短めに"}; }
+function showToday(pick, ok){
+  const box=$("#today"); if(!pick){ box.hidden=true; return; }
+  box.hidden=false;
+  box.innerHTML = `<span class="eyebrow">今日の1本</span><span class="ttl">${esc(THEMES[pick.key].name)}${ok?"":"（この近くでは作れませんでした）"}</span><span class="why">${esc(pick.why)}</span><button type="button" id="allThemes">ほかのテーマも探す</button>`;
+  $("#allThemes").onclick=()=>run(); }
+
+async function run(opt={}){
   const btn=$("#goBtn"), st=$("#status");
   btn.disabled=true; clearResults(); st.className="status"; routeErr=null;
+  if(!opt.today) showToday(null);
   const target = targetMeters(), P = proj(start);
   setWalkCtx(target);
-  let order = mode==="loop" ? LOOP_ORDER : destMode() ? DEST_ORDER : ONE_ORDER;
+  let order = opt.only ? [...opt.only] : withTimed(mode==="loop" ? LOOP_ORDER : destMode() ? DEST_ORDER : ONE_ORDER, walkCtx.mid);
   if(walkCtx.dark) order = [...order.filter(k=>!["green","water","sight"].includes(k)), ...order.filter(k=>["green","water","sight"].includes(k))];
   showPlaceholders(order);
   try{
@@ -965,6 +1045,12 @@ async function run(){
         if(results.length===1) select(rt.key, false); else renderLists();
       }catch(e){ console.warn(key, e); routeErr = (e && e.message) || "接続できない"; dropPlaceholder(key); }
     }
+    // with coarse direction choice the "flat" route can end up climbing more than the "hill" one — swap them then
+    const H = results.find(r=>r.key==="hill"), F = results.find(r=>r.key==="flat");
+    if(H && F && F.info && H.info && F.info.asc > H.info.asc + 1){
+      [H.key, F.key] = ["flat","hill"];
+      for(const r of [H,F]){ if(routeLayers[r.key]) map.removeLayer(routeLayers[r.key]); }
+      delete routeLayers.hill; delete routeLayers.flat; drawRoute(H); drawRoute(F); fillChip(H); fillChip(F); select(selected, false); }
     if(poiErr && results.length){
       st.className="status err";
       st.innerHTML = `お店・名所のデータのサーバーにつながらなかったため、おまかせ・坂道・フラットのルートだけ作りました。<br><small>詳細: ${esc(poiErr)}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`;
@@ -973,6 +1059,8 @@ async function run(){
       st.textContent = r0.dist > lastRun.target*1.05
         ? `行き先までは最短でも${fmt(stepsOf(r0))}歩（約${Math.round(r0.dist/WALK_MPM)}分）かかるので、遠回りのルートは出していません。歩数（時間・カロリー）を増やすと遠回りの候補が出ます。`
         : `最短ルートができました。遠回りの候補は、目標の歩数が最短より15%以上多いときに出ます。`;
+    } else if(opt.today){
+      st.textContent = results.length ? `${hhmm(walkCtx.depart)}出発のおすすめを1本作りました。条件を変えて「ルートを探す」を押せば、全テーマで探せます。` : "";
     } else if(results.length){
       st.textContent = `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。`;
     } else {
@@ -984,7 +1072,7 @@ async function run(){
     st.innerHTML = `予期しないエラーで止まりました。<br><small>詳細: ${esc(String(e && e.message || e))}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`;
     const dg = st.querySelector("[data-diag]"); if(dg) dg.onclick = runDiagnostics;
     st.className="status err"; $("#switcher").hidden=true;
-  }finally{ btn.disabled=false; } }
+  }finally{ btn.disabled=false; if(opt.today) showToday(opt.today, results.length>0); } }
 
 /* ---------- 別の案: same theme, another direction (or another station / bath) ---------- */
 async function altRoute(rt, btn){
@@ -1020,7 +1108,8 @@ function dropPlaceholder(key){ const b=$(`#switcher [data-key="${key}"]`); if(b)
 
 function keyMetric(rt){ const i=rt.info;
   switch(rt.key){
-    case "shop": return `営業中 ${i.shops}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
+    case "shop": return `営業中 ${i.shops}軒`;
+    case "cafe": return `カフェ ${i.cafes}軒`; case "bakery": return `パン屋 ${i.bakeries}軒`; case "bar": return `バー・居酒屋 ${i.bars}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
     case "water": return `水辺 ${Math.round(i.water*100)}%`; case "hill": case "flat": return `登り ${Math.round(i.asc)}m`;
     default: return rt.endPoi && rt.endPoi.name ? rt.endPoi.name : THEMES[rt.key].desc; } }
 
@@ -1189,7 +1278,37 @@ function renderFavs(){
 function osmFallback(){
   if(tiles) map.removeLayer(tiles);
   tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map); }
+// Night / dark mode: the light "positron" style is recoloured layer by layer (lightness inverted, colour kept)
+const darkQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : {matches:false};
+function isNight(){ try{ const now=new Date(), s=sunTimes(now, start.lat, start.lon); return now < s.rise || now > new Date(s.set.getTime()+30*60000); }catch(e){ return false; } }
+function wantDark(){ return darkQ.matches || isNight(); }
+function parseColor(c){
+  if(typeof c!=="string") return null; c=c.trim().toLowerCase();
+  if(c==="white") return [255,255,255,1]; if(c==="black") return [0,0,0,1];
+  let m;
+  if((m=c.match(/^#([0-9a-f]{3,8})$/))){ let h=m[1]; if(h.length<=4) h=[...h].map(x=>x+x).join(""); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16), h.length===8?parseInt(h.slice(6,8),16)/255:1]; }
+  if((m=c.match(/^rgba?\(([^)]+)\)$/))){ const a=m[1].split(",").map(x=>parseFloat(x)); return [a[0],a[1],a[2],a[3]??1]; }
+  if((m=c.match(/^hsla?\(([^)]+)\)$/))){ const a=m[1].split(",").map(x=>parseFloat(x)); const [r,g,b]=hsl2rgb(a[0]/360,a[1]/100,a[2]/100); return [r,g,b,a[3]??1]; }
+  return null; }
+function rgb2hsl(r,g,b){ r/=255; g/=255; b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b); let h=0, s=0; const l=(mx+mn)/2;
+  if(mx!==mn){ const d=mx-mn; s=l>.5?d/(2-mx-mn):d/(mx+mn); h = mx===r?(g-b)/d+(g<b?6:0) : mx===g?(b-r)/d+2 : (r-g)/d+4; h/=6; } return [h,s,l]; }
+function hsl2rgb(h,s,l){ if(!s) return [l*255,l*255,l*255]; const q=l<.5?l*(1+s):l+s-l*s, p=2*l-q;
+  const f=t=>{ t=(t+1)%1; return t<1/6?p+(q-p)*6*t : t<1/2?q : t<2/3?p+(q-p)*(2/3-t)*6 : p; }; return [f(h+1/3)*255, f(h)*255, f(h-1/3)*255]; }
+function darken(v){
+  if(Array.isArray(v)) return v.map(darken);
+  const c=parseColor(v); if(!c) return v;
+  const [h,s,l]=rgb2hsl(c[0],c[1],c[2]); const [r,g,b]=hsl2rgb(h, s*0.7, 0.09+0.72*(1-l));
+  return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${c[3]})`; }
+function darkenStyle(gl){
+  for(const l of gl.getStyle().layers||[]){
+    for(const prop of Object.keys(l.paint||{})){ if(!/color$/.test(prop)) continue;
+      try{ gl.setPaintProperty(l.id, prop, darken(gl.getPaintProperty(l.id, prop))); }catch(e){} } } }
+function applyTheme(){ // dark page + dark map at night or in dark mode
+  const dark = wantDark(); document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const meta=document.querySelector('meta[name="theme-color"]'); if(meta) meta.content = dark ? "#0f1115" : "#f3f4f6";
+  return dark; }
 function setTiles(){
+  applyTheme();
   if(!window.maplibregl || !L.maplibreGL) return osmFallback();
   try{
     tiles = L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron", attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'}).addTo(map);
@@ -1197,6 +1316,7 @@ function setTiles(){
     let failed = false;
     gl.on("error", e=>{ if(!failed && e && e.error && /style|Failed to fetch/i.test(String(e.error.message||""))) { failed=true; map.removeLayer(tiles); osmFallback(); } });
     gl.on("style.load", ()=>{
+      if(applyTheme()) darkenStyle(gl);
       for(const l of gl.getStyle().layers||[]){
         if(l.type!=="symbol" || !(l.layout && l.layout["text-field"])) continue;
         try{ gl.setLayoutProperty(l.id, "text-field", ["coalesce", ["get","name:ja"], ["get","name"]]); }catch(err){}
@@ -1210,7 +1330,7 @@ function initMap(){
   startMarker = L.marker([start.lat,start.lon],{draggable:true,title:"出発地",zIndexOffset:1000,
     icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:'<div class="start-pin"></div>'})}).addTo(map);
   startMarker.on("dragend", async e=>{ const p=e.target.getLatLng(); setStart(p.lat,p.lng); const n=await reverseName(p.lat,p.lng); if(n && Math.abs(start.lat-p.lat)<1e-9){ start.name=n; $("#startName").textContent="出発: "+n; } });
-  reachCircle = L.circle([start.lat,start.lon],{radius:100,color:"#14181f",weight:1,dashArray:"4 6",fill:true,fillOpacity:.04,interactive:false}).addTo(map);
+  reachCircle = L.circle([start.lat,start.lon],{radius:100,color:"#7b8494",weight:1.2,dashArray:"4 6",fill:true,fillOpacity:.04,interactive:false}).addTo(map);
   poiLayer = L.layerGroup().addTo(map);
   map.on("click", async e=>{ const {lat,lng}=e.latlng;
     if(pickingDest){ setDest(lat,lng,null,null); const n=await reverseName(lat,lng); if(n && dest && dest.lat===lat){ dest.name=n; renderDest(); } return; }
@@ -1256,7 +1376,9 @@ function init(){
   const home = favs[0];
   if(home) setStart(home.lat, home.lon, home.name), map.setView([home.lat,home.lon],14);
   else setStart(start.lat, start.lon, start.name);
+  const hadUrl = !!location.search && location.search.length>1;
   applyUrl();
+  if(!hadUrl){ const pick=todayPick(); setTimeout(()=>run({only:[pick.key], today:pick}), 400); }
 }
 
 /* ---------- current location ---------- */
@@ -1443,7 +1565,7 @@ function drawWalked(){
   if(!map) return;
   if(walkedLayer){ map.removeLayer(walkedLayer); walkedLayer=null; }
   if(!$("#showWalked").checked || !walkLog.length) return;
-  walkedLayer = L.layerGroup(walkLog.map(w=>L.polyline(decPoly(w.e).map(p=>[p.lat,p.lon]),{color:"#14181f",weight:3,opacity:.35,dashArray:"1 6",lineCap:"round",interactive:false}))).addTo(map);
+  walkedLayer = L.layerGroup(walkLog.map(w=>L.polyline(decPoly(w.e).map(p=>[p.lat,p.lon]),{color:"#7b8494",weight:3,opacity:.6,dashArray:"1 6",lineCap:"round",interactive:false}))).addTo(map);
   walkedLayer.eachLayer(l=>l.bringToBack()); }
 function renderLog(){
   const now=new Date(), month=walkLog.filter(w=>{ const d=new Date(w.d); return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth(); });
