@@ -308,7 +308,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/04-1</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/04-3</div>
   </aside>
 </div>
 
@@ -320,6 +320,7 @@ details.more[open] summary{margin-bottom:8px}
 const $ = s => document.querySelector(s);
 const THEMES = {
   direct: {name:"最短ルート",       color:"#0f766e", desc:"いちばん近い道で行き先へ", direct:true},
+  sun:    {name:"夕日を見るルート", color:"#f08c00", desc:"日の入りの時間に、川の向こうに沈む夕日が見える場所を通る", sun:true},
   cafe:   {name:"カフェ休憩つき",   color:"#8a5a44", desc:"カフェの多い道を通る", cat:"cafe"},
   bakery: {name:"パン屋めぐり",     color:"#b7791f", desc:"パン屋さんをはしごする", cat:"bakery"},
   bar:    {name:"夜の飲み歩き",     color:"#b4235a", desc:"バーや居酒屋の多い通りへ", cat:"bar"},
@@ -339,7 +340,24 @@ const DEST_ORDER = ["direct","shop","sight","green","water","hill","flat","free"
 // extra themes only when they make sense for the time of day
 function timedThemes(when){ const h=when.getHours(), out=[];
   if(h>=7 && h<16) out.push("bakery"); if(h>=8 && h<19) out.push("cafe"); if(h>=17 || h<1) out.push("bar"); return out; }
-function withTimed(order, when){ const i=order.indexOf("shop"); const extra=timedThemes(when); return i<0 ? [...order, ...extra] : [...order.slice(0,i+1), ...extra, ...order.slice(i+1)]; }
+function withTimed(order, when){ const i=order.indexOf("shop"); const extra=timedThemes(when);
+  const out = i<0 ? [...order, ...extra] : [...order.slice(0,i+1), ...extra, ...order.slice(i+1)];
+  return sunEvent() && !destMode() ? ["sun", ...out] : out; }
+// sunrise or sunset that happens while walking (from 5 min after leaving until arrival) — or null
+function sunEvent(){
+  try{
+    const a = walkCtx.depart.getTime()+5*60000, b = walkCtx.arrive.getTime();
+    for(const dd of [0,1]){ const d=new Date(walkCtx.depart.getTime()+dd*864e5), st=sunTimes(d, start.lat, start.lon);
+      for(const [kind, t] of [["rise", st.rise], ["set", st.set]]) if(t.getTime()>=a && t.getTime()<=b) return {kind, time:t, az:sunAzimuth(t, start.lat, start.lon)}; }
+  }catch(e){} return null; }
+// direction of the sun, degrees clockwise from north
+function sunAzimuth(date, lat, lon){
+  const rad=Math.PI/180, d=(date-Date.UTC(2000,0,1,12))/864e5;
+  const g=(357.529+0.98560028*d)*rad, q=280.459+0.98564736*d, Lm=(q+1.915*Math.sin(g)+0.020*Math.sin(2*g))*rad, e=(23.439-0.00000036*d)*rad;
+  const RA=Math.atan2(Math.cos(e)*Math.sin(Lm), Math.cos(Lm)), dec=Math.asin(Math.sin(e)*Math.sin(Lm));
+  const GMST=(18.697374558+24.06570982441908*d)%24, H=((GMST*15+lon)*rad)-RA;
+  const az=Math.atan2(-Math.sin(H), Math.tan(dec)*Math.cos(lat*rad)-Math.sin(lat*rad)*Math.cos(H));
+  return (az/rad+360)%360; }
 
 let mode = "loop";
 let start = {lat:35.69665, lon:139.81415, name:"錦糸町駅"};
@@ -809,7 +827,46 @@ async function designDestRoute(key, D, P, target, opt={}){
     L = Math.max(d0*1.1, L*Math.min(1.6, Math.max(0.6, target/res.dist))); }
   return best ? {key, ...best} : null; }
 
+/* 夕日・朝日ルート: find a riverside / canal-side spot where, looking toward the sun at that moment, there is
+   open water (so the sun is not hidden by buildings), and route through it so you get there around that time. */
+function viewScore(D, p, az){
+  let n=0; for(const q of D.grids.water.near(p.x,p.y,1500)){ const dx=q.x-p.x, dy=q.y-p.y, d=Math.hypot(dx,dy); if(d<30) continue;
+    const b=(Math.atan2(dx,dy)*180/Math.PI+360)%360, diff=Math.abs(((b-az+540)%360)-180); if(diff<=30) n += d<400 ? 2 : 1; } return n; }
+async function designSunRoute(key, D, P, target, opt={}){
+  const ev = sunEvent(); if(!ev || !D.cats.water.length) return null;
+  THEMES.sun.name = ev.kind==="set" ? "夕日を見るルート" : "朝日を見るルート";
+  THEMES.sun.desc = ev.kind==="set" ? "日の入りの時間に、川の向こうに沈む夕日が見える場所を通る" : "日の出の時間に、川の向こうから昇る朝日が見える場所を通る";
+  const oneWay = mode==="one", minsToEvent = (ev.time - walkCtx.depart)/60000;
+  const want = Math.max(300, minsToEvent*WALK_MPM / (oneWay?1.25:1.3));   // straight-line distance we can cover before the event
+  const lo = oneWay ? target*0.3 : target*0.12, hi = oneWay ? target/1.1 : target*0.42;
+  const ex = new Set(opt.exEnds||[]);
+  let best=null, bs=-1;
+  // stand on the bank on the side away from the sun, so the water lies between you and the sun
+  const back = polar(ev.az+180, 60);
+  for(const w of D.cats.water){ if(ex.has(w)) continue;
+    const p = {x:w.x+back.x, y:w.y+back.y, src:w}; const r=Math.hypot(p.x,p.y); if(r<lo || r>hi) continue;
+    const v = viewScore(D, p, ev.az); if(v<2) continue;
+    const s = v * (1 - Math.min(0.8, Math.abs(r-want)/want*0.8));
+    if(s>bs){ bs=s; best=p; } }
+  if(!best) return null;
+  const spot = {x:best.x, y:best.y, label: ev.kind==="set" ? "夕日スポット（水辺）" : "朝日スポット（水辺）", poi:{x:best.x, y:best.y, cat:"water", name:""}};
+  const th = (Math.atan2(best.x,best.y)*180/Math.PI+360)%360, rS = Math.hypot(best.x,best.y);
+  let side = rS*0.75, res=null, wps=null, bestR=null;
+  for(let it=0; it<3; it++){
+    wps = oneWay ? [spot] : [toNamedStop(D, polar(th-50, side), "green"), spot, toNamedStop(D, polar(th+50, side), "green")];
+    res = await osrm([start, ...wps.map(p=>P.ll(p)), ...(oneWay?[]:[start])]);
+    const err=Math.abs(res.dist-target)/target;
+    if(!bestR || err<bestR.err) bestR={...res, err, wps:[...wps]};
+    if(oneWay || err<0.08) break;
+    side = Math.max(150, side*Math.min(1.6, Math.max(0.5, 1+(target-res.dist)/(res.dist*0.6)))); }
+  // when do we reach the spot?
+  const xy = bestR.coords.map(c=>P.xy(c)); let acc=0, at=0, bd=1e9;
+  for(let i=0;i<xy.length;i++){ if(i) acc+=dist(xy[i-1],xy[i]); const d=dist(xy[i],spot); if(d<bd){ bd=d; at=acc; } }
+  const reach = new Date(walkCtx.depart.getTime() + at/WALK_MPM*60000);
+  return {key, ...bestR, theta:th, endPoi:null, sun:{...ev, reach, spot}}; }
+
 async function designRoute(key, D, P, target, elevGrid, opt={}){
+  if(key==="sun") return designSunRoute(key, D, P, target, opt);
   if(destMode()) return designDestRoute(key, D, P, target, opt);
   const th = THEMES[key]; const oneWay = mode==="one";
   let r = reachRadius(target), best=null, theta=0, fixedEnd=null, used=new Set(opt.exEnds||[]);
@@ -853,7 +910,7 @@ function snapStreet(D, p, win){
 /* ---------- stops handed to Google Maps ---------- */
 // Move an unnamed stop (e.g. the middle of a shop cluster) onto the nearest named spot within 250 m,
 // so Google Maps can list it by name instead of a street address.
-const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop" && p.poi.cat!=="dest");
+const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop" && p.poi.cat!=="dest" && p.poi.cat!=="water");
 function toNamedStop(D, p, key){
   if(isNamedStop(p)) return p;
   const order = key==="green" ? ["green","sight","station"] : key==="shop" ? ["street","sight","green","station"] : ["sight","green","station"];
@@ -994,7 +1051,8 @@ function todayPick(){
   if(h>=5 && h<9)  return wkend ? {key:"bakery", why:`${W}の朝は、焼きたてのパン屋さんへ`} : {key:"green", why:`${W}の朝は、公園の緑の中を歩いて目を覚ます`};
   if(h>=9 && h<11) return wkend ? {key:"cafe", why:`${W}の午前は、カフェで一息つくコース`} : {key:"sight", why:`${W}の午前は、空いている寺社や名所へ`};
   if(h>=11 && h<14) return {key:"shop", why:"お昼どき。商店街でランチの店を探しながら"};
-  if(dusk) return {key:"water", why:`もうすぐ日の入り（${hhmm(sun.set)}）。川沿いで夕焼けを見ながら`};
+  if(dusk) return {key:"sun", why:`もうすぐ日の入り（${hhmm(sun.set)}）。川の向こうに沈む夕日を見に`};
+  if(sun && now >= new Date(sun.rise.getTime()-50*60000) && now <= new Date(sun.rise.getTime()+5*60000)) return {key:"sun", why:`もうすぐ日の出（${hhmm(sun.rise)}）。川の向こうから昇る朝日を見に`};
   if(h>=14 && h<17) return wkend ? {key:"sight", why:`${W}の午後は、寺社や名所めぐり`} : {key:"cafe", why:"午後のひと休みに、カフェ休憩つき"};
   if(h>=17 && h<19) return {key:"shop", why:"夕方の商店街がいちばんにぎわう時間"};
   if(h>=19 && h<23) return (dow===5||dow===6) ? {key:"bar", why:`${W}の夜は、飲み歩きルートで一軒寄り道`} : {key:"flat", why:`${W}の夜は、坂の少ない道で軽めに`};
@@ -1080,6 +1138,7 @@ async function altRoute(rt, btn){
   const st=$("#status"); btn.disabled=true; btn.textContent="作成中…";
   try{
     const ex = rt.excl || [rt.theta], exEnds = rt.exEnds || (rt.endPoi?[rt.endPoi]:[]);
+    if(rt.sun) exEnds.push(...lastRun.D.cats.water.filter(q=>dist(q,rt.sun.spot)<500));
     const nr = await designRoute(rt.key, lastRun.D, lastRun.P, lastRun.target, lastRun.elevGrid, {exclude:ex, exEnds});
     if(!nr){ toast("この条件では、これ以上の別案は見つかりませんでした"); renderLists(); return; }
     nr.info = await analyze(nr, lastRun.D, lastRun.P); nr.target = lastRun.target;
@@ -1107,6 +1166,7 @@ function showPlaceholders(order){
 function dropPlaceholder(key){ const b=$(`#switcher [data-key="${key}"]`); if(b) b.remove(); }
 
 function keyMetric(rt){ const i=rt.info;
+  if(rt.sun) return `${rt.sun.kind==="set"?"日の入り":"日の出"} ${hhmm(rt.sun.time)}`;
   switch(rt.key){
     case "shop": return `営業中 ${i.shops}軒`;
     case "cafe": return `カフェ ${i.cafes}軒`; case "bakery": return `パン屋 ${i.bakeries}軒`; case "bar": return `バー・居酒屋 ${i.bars}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
@@ -1142,6 +1202,9 @@ function detailHTML(rt){
   const notes=[];
   if(i && rt.key==="hill" && range<8) notes.push(`この周辺は平坦です（高低差 約${Math.round(range)}m）。橋や歩道橋の上り下りが中心になります。`);
   if(!rt.shared && rt.key!=="direct" && Math.abs(dev)>15) notes.push("道の形の都合で、目標から少しずれています。");
+  if(rt.sun){ const diff=Math.round((rt.sun.time - rt.sun.reach)/60000), ev = rt.sun.kind==="set"?"日の入り":"日の出";
+    notes.push(diff>=0 ? `スポットに${hhmm(rt.sun.reach)}ごろ着きます（${ev} ${hhmm(rt.sun.time)}の${diff}分前）。${rt.sun.kind==="set"?"西南西":"東南東"}の方角を見てください。`
+                        : `スポットに着くのは${ev}（${hhmm(rt.sun.time)}）の${-diff}分後です。${-diff}分早く出発すると間に合います。`); }
   if(walkCtx.dark && ["green","water","sight"].includes(rt.key)) notes.push("日没後の時間帯です。公園や川沿い、境内は暗い場所があるので、人通りのある道を選んでください。");
   if(rt.key==="station"){ const h=arrive.getHours()+arrive.getMinutes()/60; if(h>=0.4 && h<5) notes.push(`到着は${hhmm(arrive)}ごろ。終電が終わっている可能性があります。`); }
   if(rt.key==="shop" && i && i.shopsAll>i.shops*2) notes.push(`この時間はお店の多くが閉まっています（営業中 ${i.shops}軒／全${i.shopsAll}軒）。`);
@@ -1378,7 +1441,8 @@ function init(){
   else setStart(start.lat, start.lon, start.name);
   const hadUrl = !!location.search && location.search.length>1;
   applyUrl();
-  if(!hadUrl){ const pick=todayPick(); setTimeout(()=>run({only:[pick.key], today:pick}), 400); }
+  if(!hadUrl){ const pick=todayPick(); setTimeout(async()=>{ await run({only:[pick.key], today:pick});
+    if(!results.length && pick.key==="sun") run({only:["water"], today:{key:"water", why:pick.why}}); }, 400); }
 }
 
 /* ---------- current location ---------- */
@@ -1438,7 +1502,12 @@ function updateTimeCtx(){
   if(!$("#timeCtx")) return;
   setWalkCtx(targetMeters());
   const s=walkCtx.sun;
-  $("#timeCtx").textContent = walkCtx.dark ? `日没後（日の入り ${hhmm(s.set)}）` : `日の入り ${hhmm(s.set)}`; }
+  const m = walkCtx.mid;
+  if(m > s.set){ // after sunset: show tomorrow's sunrise
+    const next = sunTimes(new Date(m.getTime()+864e5), start.lat, start.lon);
+    $("#timeCtx").textContent = `日没後・日の出 ${hhmm(next.rise)}（翌朝）`; }
+  else if(m < s.rise) $("#timeCtx").textContent = `日の出前・日の出 ${hhmm(s.rise)}`;
+  else $("#timeCtx").textContent = `日の入り ${hhmm(s.set)}`; }
 // sunrise / sunset (NOAA approximation), good to a few minutes
 function sunTimes(date, lat, lon){
   const rad=Math.PI/180, y=date.getFullYear(), start0=new Date(y,0,0), doy=Math.floor((date-start0)/864e5);
