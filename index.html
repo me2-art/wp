@@ -96,6 +96,11 @@ button{cursor:pointer}
 .seg-sm button{padding:6px 12px;font-size:12px}
 .big-in{width:5.4ch;border:0;background:transparent;font-family:var(--f-num);font-size:40px;font-weight:600;padding:0;line-height:1.1;outline:none;letter-spacing:-.01em;color:var(--ink)}
 .big-in:focus-visible{box-shadow:0 2px 0 var(--ink)}
+.ctrl.flash{box-shadow:0 0 0 2px var(--ink)}
+.wx{font-size:12px;color:var(--muted);margin-top:-4px}
+.wx b{color:var(--ink);font-weight:700}
+.rain{font-size:12px;border-radius:10px;padding:8px 10px;background:color-mix(in srgb, #1d82e0 14%, transparent);color:var(--ink)}
+.rain-pin{width:24px;height:24px;border-radius:50%;background:#1d82e0;color:#fff;border:2px solid var(--surface);display:grid;place-items:center;font:700 11px/1 var(--f-body);box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .today{display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:18px;background:var(--btn);color:var(--btn-ink)}
 .today .eyebrow{font-size:10px;letter-spacing:.14em;font-weight:700;opacity:.7}
 .today .ttl{font-size:17px;font-weight:700;line-height:1.35}
@@ -230,9 +235,10 @@ details.more[open] summary{margin-bottom:8px}
   </div>
 
   <aside class="panel">
+    <section class="today" id="today" hidden aria-live="polite"></section>
     <div class="brand"><h1>歩数ルートプランナー</h1><span class="est" id="startName"></span></div>
 
-    <section class="ctrl" aria-label="条件">
+    <section class="ctrl" id="ctrl" aria-label="条件">
       <div class="seg seg-sm" role="group" aria-label="指定のしかた" id="inputMode">
         <button type="button" data-im="steps" aria-pressed="true">歩数で指定</button>
         <button type="button" data-im="time" aria-pressed="false">時間で指定</button>
@@ -250,6 +256,7 @@ details.more[open] summary{margin-bottom:8px}
         <button type="button" class="pchip" id="nowBtn" aria-pressed="true">今すぐ</button>
         <span class="timectx" id="timeCtx"></span>
       </div>
+      <div class="wx" id="wx"></div>
       <div class="go-row">
         <div class="seg" role="group" aria-label="歩き方">
           <button type="button" id="mLoop" aria-pressed="true">周回</button>
@@ -296,7 +303,6 @@ details.more[open] summary{margin-bottom:8px}
       <div class="status" id="status" aria-live="polite"></div>
     </section>
 
-    <section class="today" id="today" hidden aria-live="polite"></section>
     <div id="detail"></div>
     <div class="sec-title" id="othersTitle" hidden>ほかのルート</div>
     <div class="list" id="results"></div>
@@ -308,7 +314,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/04-3</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-1</div>
   </aside>
 </div>
 
@@ -324,7 +330,7 @@ const THEMES = {
   cafe:   {name:"カフェ休憩つき",   color:"#8a5a44", desc:"カフェの多い道を通る", cat:"cafe"},
   bakery: {name:"パン屋めぐり",     color:"#b7791f", desc:"パン屋さんをはしごする", cat:"bakery"},
   bar:    {name:"夜の飲み歩き",     color:"#b4235a", desc:"バーや居酒屋の多い通りへ", cat:"bar"},
-  shop:   {name:"商店街・グルメ",   color:"#ef6a2f", desc:"お店の多い通りを抜ける", cat:"shop"},
+  shop:   {name:"商店街・グルメ",   color:"#ef6a2f", desc:"営業中のお店の多い通りを抜ける", cat:"shopReal"},
   sight:  {name:"寺社・名所",       color:"#9351d6", desc:"神社仏閣や見どころを経由", cat:"sight"},
   green:  {name:"公園・緑",         color:"#23995d", desc:"公園や庭園をつないで歩く", cat:"green"},
   water:  {name:"川沿い・水辺",     color:"#1d82e0", desc:"川や運河の近くを歩く", cat:"water"},
@@ -729,13 +735,14 @@ function getRaw(R){
 
 async function loadPOIs(P, R){
   const raw = await getRaw(R);
-  const cats = {shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]};
+  const cats = {shop:[],shopReal:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]};
   const lim = R + 300, mid = walkCtx.mid, arrive = walkCtx.arrive;
   for(const it of raw.items){
     const q = P.xy({lat:it[1], lon:it[2]}); if(Math.hypot(q.x,q.y)>lim) continue;
     const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||"", cat};
     if(cat==="shop"){ cats.shopAll.push(p);
-      if(isOpen(p.oh, SHOP_HOURS[p.code], mid)){ cats.shop.push(p); if(p.code===2) cats.cafe.push(p); else if(p.code===7) cats.bakery.push(p); else if(p.code===3) cats.bar.push(p); }
+      if(isOpen(p.oh, SHOP_HOURS[p.code], mid)){ cats.shop.push(p); if(p.code!==4 && p.code!==5) cats.shopReal.push(p);   // コンビニ・スーパーは商店街に数えない
+        if(p.code===2) cats.cafe.push(p); else if(p.code===7) cats.bakery.push(p); else if(p.code===3) cats.bar.push(p); }
       continue; }
     if(cat==="sight" && p.code===1 && !isOpen(p.oh, [[600,1020]], mid)) continue;   // museums: 10-17 unless tagged
     if(cat==="bath" && !isOpen(p.oh, [[900,1410]], arrive)) continue;               // sento: 15:00-23:30 unless tagged
@@ -745,7 +752,7 @@ async function loadPOIs(P, R){
   const grids = {};
   for(const k in cats){ const g=new Grid(100); cats[k].forEach(p=>g.add(p)); grids[k]=g; }
   // local density (for snapping onto clusters such as shopping streets)
-  for(const k of ["shop","sight","green","water","cafe","bakery","bar"]) for(const p of cats[k]) p.dens = grids[k].near(p.x,p.y,130).length;
+  for(const k of ["shop","shopReal","sight","green","water","cafe","bakery","bar"]) for(const p of cats[k]) p.dens = grids[k].near(p.x,p.y,130).length;
   return {cats, grids}; }
 
 function searchRadius(target){ return Math.min(mode==="loop" ? reachRadius(target)*1.5+300 : reachRadius(target)*1.25+300, 6000); }
@@ -787,7 +794,7 @@ function bestDirection(D, th, elevGrid, oneWay, r, exclude=[]){
     } else {
       const O={x:0,y:0};
       const pts = oneWay ? [O, polar(t,r)] : [O, ...loopWaypoints(t,r), O];
-      v = corridorScore(D, th.cat, pts) + (th.cat==="shop" ? 4*corridorScore(D, "street", pts) : 0);
+      v = corridorScore(D, th.cat, pts) + (th.cat==="shopReal" && corridorScore(D, th.cat, pts)>=3 ? 4*corridorScore(D, "street", pts) : 0);
     }
     if(v>bv){ bv=v; best=t; } }
   return {theta:best, score:bv}; }
@@ -812,7 +819,7 @@ async function designDestRoute(key, D, P, target, opt={}){
     if(!es) return null;
     cands.forEach((c,i)=>{ const v=[es[0],es[1],es[2+i*2],es[3+i*2]]; const rg=Math.max(...v)-Math.min(...v); c.score = th.elev==="max"?rg:-rg; });
   } else if(th.free){ cands.forEach(c=>{ const q=P.ll(ell(L, c.s*c.t0)); c.score = (walkedCells.has(cellKey(q.lat,q.lon))?0:1)+Math.random(); }); }
-  else cands.forEach(c=>{ const pts=[A,...wpsFor(c,L),B]; c.score = corridorScore(D, th.cat, pts) + (th.cat==="shop" ? 4*corridorScore(D,"street",pts) : 0); });
+  else cands.forEach(c=>{ const pts=[A,...wpsFor(c,L),B]; c.score = corridorScore(D, th.cat, pts) + (th.cat==="shopReal" && corridorScore(D, th.cat, pts)>=3 ? 4*corridorScore(D,"street",pts) : 0); });
   cands.sort((a,b)=>b.score-a.score);
   const cand = cands[0]; if(!th.elev && !th.free && cand.score<3) return null;
   let best=null;
@@ -865,8 +872,40 @@ async function designSunRoute(key, D, P, target, opt={}){
   const reach = new Date(walkCtx.depart.getTime() + at/WALK_MPM*60000);
   return {key, ...bestR, theta:th, endPoi:null, sun:{...ev, reach, spot}}; }
 
+/* パン屋めぐり・カフェ休憩つき: these shops are sparse, so instead of aiming at "a direction with many of them"
+   the route goes through up to 3 actual open shops (each becomes a stop), then is stretched or trimmed to the target. */
+async function designVisitRoute(key, D, P, target, opt={}){
+  const th=THEMES[key], oneWay = mode==="one", ex = new Set(opt.exEnds||[]);
+  const maxR = oneWay ? target/1.15 : target*0.4;
+  const pool = D.cats[th.cat].filter(p=>p.name && !ex.has(p) && Math.hypot(p.x,p.y) <= maxR && Math.hypot(p.x,p.y) > 60);
+  if(!pool.length) return null;
+  const angDiff=(a,b)=>Math.abs(((a-b+540)%360)-180), brg=p=>(Math.atan2(p.x,p.y)*180/Math.PI+360)%360;
+  let bestT=null, bc=-1;
+  for(let t=0;t<360;t+=30){ if((opt.exclude||[]).some(e=>angDiff(t,e)<60)) continue;
+    const c = pool.filter(p=>angDiff(brg(p),t)<=50).length; if(c>bc){ bc=c; bestT=t; } }
+  if(bestT===null || bc<1) return null;
+  let pick = pool.filter(p=>angDiff(brg(p),bestT)<=50).sort((a,b)=>Math.hypot(b.x,b.y)-Math.hypot(a.x,a.y));
+  // keep up to 3, spread out (≥250 m apart)
+  const chosen=[]; for(const p of pick){ if(chosen.length>=3) break; if(chosen.every(q=>dist(p,q)>=250)) chosen.push(p); }
+  const order = list => oneWay ? [...list].sort((a,b)=>Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y)) : [...list].sort((a,b)=>angDiff(brg(a),bestT-90)-angDiff(brg(b),bestT-90));
+  let list = order(chosen), stretch = 0, best=null;
+  for(let it=0; it<4; it++){
+    const far = list.reduce((m,p)=>Math.hypot(p.x,p.y)>Math.hypot(m.x,m.y)?p:m, list[0]);
+    const wps = list.map(p=>({x:p.x, y:p.y, poi:{...p, visit:true}}));
+    if(stretch>0){ const ext = polar(brg(far), Math.hypot(far.x,far.y)+stretch); const i = wps.findIndex(w=>w.poi.name===far.name); wps.splice(oneWay?wps.length:i+1, 0, toNamedStop(D, ext, key)); }
+    const res = await osrm([start, ...wps.map(p=>P.ll(p)), ...(oneWay?[]:[start])]);
+    const err=(res.dist-target)/target;
+    if(!best || Math.abs(err)<Math.abs(best.err)) best={...res, err:Math.abs(err), wps};
+    if(Math.abs(err)<0.12) break;
+    if(err<0){ stretch += Math.max(150, (target-res.dist)/(oneWay?1.2:2.4)); }
+    else if(list.length>1 && stretch===0){ list = order(list.filter(p=>p!==far)); }   // too long: drop the farthest shop
+    else stretch = Math.max(0, stretch - (res.dist-target)/(oneWay?1.2:2.4));
+  }
+  return best ? {key, ...best, theta:bestT, endPoi:null} : null; }
+
 async function designRoute(key, D, P, target, elevGrid, opt={}){
   if(key==="sun") return designSunRoute(key, D, P, target, opt);
+  if((key==="bakery" || key==="cafe") && !destMode()) return designVisitRoute(key, D, P, target, opt);
   if(destMode()) return designDestRoute(key, D, P, target, opt);
   const th = THEMES[key]; const oneWay = mode==="one";
   let r = reachRadius(target), best=null, theta=0, fixedEnd=null, used=new Set(opt.exEnds||[]);
@@ -910,7 +949,7 @@ function snapStreet(D, p, win){
 /* ---------- stops handed to Google Maps ---------- */
 // Move an unnamed stop (e.g. the middle of a shop cluster) onto the nearest named spot within 250 m,
 // so Google Maps can list it by name instead of a street address.
-const isNamedStop = p => !!(p && p.poi && p.poi.name && p.poi.cat!=="shop" && p.poi.cat!=="dest" && p.poi.cat!=="water");
+const isNamedStop = p => !!(p && p.poi && p.poi.name && (p.poi.visit || (p.poi.cat!=="shop" && p.poi.cat!=="dest" && p.poi.cat!=="water")));
 function toNamedStop(D, p, key){
   if(isNamedStop(p)) return p;
   const order = key==="green" ? ["green","sight","station"] : key==="shop" ? ["street","sight","green","station"] : ["sight","green","station"];
@@ -1015,15 +1054,64 @@ async function analyze(rt, D, P){
   const pts = resample(xy, L/(n-1)).slice(0,300).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   const asc = climbOf(el);
-  const cafes = along("cafe",35).length, bakeries = along("bakery",35).length, bars = along("bar",35).length;
-  return {allStops, spots, cafes, bakeries, bars, shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
+  const cafes = along("cafe",35).length, bakeries = along("bakery",35).length, bars = along("bar",35).length, shopsReal = along("shopReal",35).length;
+  return {allStops, spots, cafes, bakeries, bars, shopsReal, rain: rainOn(rt, D, P), shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
 
 
+/* ---------- weather (Open-Meteo forecast, one request per place and hour) ---------- */
+let wxData=null, wxKey="";
+const WX_TEXT = c => c===0?"快晴": c<=2?"晴れ": c===3?"くもり": c<=48?"霧": c<=57?"霧雨": c<=67?"雨": c<=77?"雪": c<=82?"にわか雨": c<=86?"にわか雪":"雷雨";
+async function loadWeather(){
+  const k = start.lat.toFixed(2)+","+start.lon.toFixed(2)+","+new Date().getHours();
+  if(wxData && wxKey===k) return wxData;
+  const j = await fetchJSON(`https://api.open-meteo.com/v1/forecast?latitude=${start.lat.toFixed(3)}&longitude=${start.lon.toFixed(3)}&hourly=temperature_2m,precipitation_probability,precipitation,weather_code&timezone=Asia%2FTokyo&forecast_days=3`, {}, 1, 10000);
+  const h=j.hourly; wxKey=k;
+  wxData = h.time.map((t,i)=>({t:new Date(t+":00+09:00"), temp:h.temperature_2m[i], pop:h.precipitation_probability[i], pr:h.precipitation[i], code:h.weather_code[i]}));
+  return wxData; }
+function wxAt(m){ if(!wxData) return null; const t=m.getTime(); return wxData.find(e=>e.t.getTime()>=t && e.t.getTime()-t<3600000) || null; } // hourly values cover the hour before
+const isRain = e => !!e && (e.pr>=0.3 || (e.pr>=0.1 && e.pop>=60));
+let wxTimer=null;
+function refreshWeather(){ clearTimeout(wxTimer); wxTimer=setTimeout(async()=>{
+  const box=$("#wx"); if(!box) return;
+  try{ await loadWeather(); const d=walkCtx.depart, e0=wxAt(d), e1=wxAt(walkCtx.arrive);
+    if(!e0){ box.textContent=""; return; }
+    let t = `出発時 <b>${WX_TEXT(e0.code)} ${Math.round(e0.temp)}℃</b> ・ 降水確率 ${e0.pop??"-"}%`;
+    if(isRain(e0)) t += ` ・ <b>雨 ${e0.pr}mm/時</b>`;
+    else if(e1 && isRain(e1)) t += ` ・ 帰るころ雨の予報`;
+    box.innerHTML = t; }catch(err){ box.textContent="天気を取得できませんでした"; } }, 300); }
+// where along the route rain is forecast to start, plus places to wait it out
+function rainOn(rt, D, P){
+  if(!wxData) return null;
+  const xy = rt.coords.map(c=>P.xy(c)), total = polyLen(xy), mins = total/WALK_MPM;
+  let startMin=null;
+  for(let m=0; m<=mins; m+=5){ if(isRain(wxAt(new Date(walkCtx.depart.getTime()+m*60000)))){ startMin=m; break; } }
+  if(startMin===null) return null;
+  // hourly data: rain "in the hour ending at T" — assume it starts at the middle of that hour, not before departure
+  const e = wxAt(new Date(walkCtx.depart.getTime()+startMin*60000));
+  const begin = new Date(Math.max(walkCtx.depart.getTime(), e.t.getTime()-30*60000)); startMin = Math.max(0, (begin-walkCtx.depart)/60000);
+  const atM = Math.min(total, startMin*WALK_MPM); let acc=0, pt=xy[0];
+  for(let i=1;i<xy.length;i++){ const sg=dist(xy[i-1],xy[i]); if(acc+sg>=atM){ const f=(atM-acc)/(sg||1); pt={x:xy[i-1].x+(xy[i].x-xy[i-1].x)*f, y:xy[i-1].y+(xy[i].y-xy[i-1].y)*f}; break; } acc+=sg; pt=xy[i]; }
+  let near=null, nd=1e9; for(const cat of ["station","sight","street","green"]) for(const q of D.grids[cat].near(pt.x,pt.y,400)) if(q.name){ const d=dist(q,pt); if(d<nd){ nd=d; near=q.name; } }
+  const sh=[];
+  for(const q of D.grids.cafe.near(pt.x,pt.y,350)) if(q.name) sh.push({name:q.name, kind:"カフェ", d:dist(q,pt)});
+  for(const q of D.grids.station.near(pt.x,pt.y,500)) sh.push({name:q.name, kind:"駅", d:dist(q,pt)});
+  const kon = D.grids.shop.near(pt.x,pt.y,250).filter(q=>q.code===4).sort((a,b)=>dist(a,pt)-dist(b,pt))[0];
+  if(kon) sh.push({name:"コンビニ", kind:"傘も買える", d:dist(kon,pt)});
+  sh.sort((a,b)=>a.d-b.d);
+  return {startMin:Math.round(startMin), time:begin, pt:P.ll(pt), near, pr:e.pr, pop:e.pop, shelters:sh.slice(0,3), atStart: startMin<5}; }
+
 /* ---------- main ---------- */
+// a shop-type theme whose route passes too few open shops would not match its title
+function mismatch(rt){ const i=rt.info; if(!i) return null;
+  if(rt.key==="shop" && i.shopsReal<5) return "商店街・グルメ";
+  if(rt.key==="cafe" && i.cafes<1) return "カフェ休憩つき";
+  if(rt.key==="bakery" && i.bakeries<1) return "パン屋めぐり";
+  if(rt.key==="bar" && i.bars<2) return "夜の飲み歩き";
+  return null; }
 let routeErr=null, lastRun=null;
-function emptyData(){ const cats={shop:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
+function emptyData(){ const cats={shop:[],shopReal:[],shopAll:[],sight:[],green:[],water:[],bath:[],station:[],street:[],cafe:[],bakery:[],bar:[]}, grids={}; for(const k in cats) grids[k]=new Grid(100); return {cats, grids}; }
 
 // checks each outside service with a tiny request and lists what answered
 async function runDiagnostics(){
@@ -1040,6 +1128,7 @@ async function runDiagnostics(){
   lines.push(await test("ルート検索", `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${o.lon},${o.lat};${d.lon},${d.lat}?overview=false`));
   { const n=Math.pow(2,15), lr=o.lat*Math.PI/180, x=Math.floor((o.lon+180)/360*n), y=Math.floor((1-Math.log(Math.tan(lr)+1/Math.cos(lr))/Math.PI)/2*n);
     lines.push(await test("標高（国土地理院）", `https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/15/${x}/${y}.png`)); }
+  lines.push(await test("天気", `https://api.open-meteo.com/v1/forecast?latitude=${o.lat}&longitude=${o.lon}&hourly=precipitation&forecast_days=1`));
   lines.push(await test("標高（予備）", `https://api.open-meteo.com/v1/elevation?latitude=${o.lat}&longitude=${o.lon}`));
   st.innerHTML = lines.map(esc).join("<br>") + "<br><small>このスクショを送ってもらえれば原因を特定できます。</small>"; }
 
@@ -1060,8 +1149,8 @@ function todayPick(){
 function showToday(pick, ok){
   const box=$("#today"); if(!pick){ box.hidden=true; return; }
   box.hidden=false;
-  box.innerHTML = `<span class="eyebrow">今日の1本</span><span class="ttl">${esc(THEMES[pick.key].name)}${ok?"":"（この近くでは作れませんでした）"}</span><span class="why">${esc(pick.why)}</span><button type="button" id="allThemes">ほかのテーマも探す</button>`;
-  $("#allThemes").onclick=()=>run(); }
+  box.innerHTML = `<span class="eyebrow">今日の1本</span><span class="ttl">${esc(THEMES[pick.key].name)}${ok?"":"（この近くでは作れませんでした）"}</span><span class="why">${esc(pick.why)}</span><button type="button" id="allThemes">ほかのテーマ・条件で探す ↓</button>`;
+  $("#allThemes").onclick=()=>{ $("#ctrl").scrollIntoView({behavior:"smooth", block:"start"}); $("#ctrl").classList.add("flash"); setTimeout(()=>$("#ctrl").classList.remove("flash"), 1600); }; }
 
 async function run(opt={}){
   const btn=$("#goBtn"), st=$("#status");
@@ -1089,7 +1178,9 @@ async function run(opt={}){
     let elevGrid=[]; try{ const e = await elevations([start,...gpts]); elevGrid = meta.map((m,i)=>({...m, e:e[i+1]})); elevGrid.start=e[0]; }
     catch(e){ elevGrid=null; }
 
+    try{ await loadWeather(); }catch(e){}
     lastRun = {D, P, target, elevGrid};
+    const dropped=[];
     let done=0;
     for(const key of order){
       const th=THEMES[key]; done++;
@@ -1099,6 +1190,7 @@ async function run(opt={}){
         const rt = await designRoute(key, D, P, target, elevGrid);
         if(!rt){ dropPlaceholder(key); continue; }
         rt.info = await analyze(rt, D, P); rt.target = target;
+        const why = mismatch(rt); if(why){ dropped.push(why); dropPlaceholder(key); continue; }
         results.push(rt); drawRoute(rt); fillChip(rt);
         if(results.length===1) select(rt.key, false); else renderLists();
       }catch(e){ console.warn(key, e); routeErr = (e && e.message) || "接続できない"; dropPlaceholder(key); }
@@ -1118,9 +1210,9 @@ async function run(opt={}){
         ? `行き先までは最短でも${fmt(stepsOf(r0))}歩（約${Math.round(r0.dist/WALK_MPM)}分）かかるので、遠回りのルートは出していません。歩数（時間・カロリー）を増やすと遠回りの候補が出ます。`
         : `最短ルートができました。遠回りの候補は、目標の歩数が最短より15%以上多いときに出ます。`;
     } else if(opt.today){
-      st.textContent = results.length ? `${hhmm(walkCtx.depart)}出発のおすすめを1本作りました。条件を変えて「ルートを探す」を押せば、全テーマで探せます。` : "";
+      st.textContent = results.length ? `${hhmm(walkCtx.depart)}出発のおすすめを1本作りました。歩数や時間を変えて「ルートを探す」を押すと、全テーマで探せます。` : "";
     } else if(results.length){
-      st.textContent = `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"日没後なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。`;
+      st.textContent = `${results.length}本のルートができました。${hhmm(walkCtx.depart)}出発・${walkCtx.dark?"暗い時間帯なので明るさにも注意":"日中"}の条件で、営業中のお店を数えています。` + (dropped.length ? `（${dropped.join("、")}は、この時間に開いているお店が少ないので出していません）` : "");
     } else {
       st.className="status err"; $("#switcher").hidden=true;
       st.innerHTML = `ルートを作れませんでした。<br><small>詳細: ${esc([poiErr&&("施設データ "+poiErr), routeErr&&("ルート検索 "+routeErr)].filter(Boolean).join(" ／ ")||"不明")}</small> <button type="button" class="pchip" data-diag>接続テスト</button>`; }
@@ -1168,7 +1260,7 @@ function dropPlaceholder(key){ const b=$(`#switcher [data-key="${key}"]`); if(b)
 function keyMetric(rt){ const i=rt.info;
   if(rt.sun) return `${rt.sun.kind==="set"?"日の入り":"日の出"} ${hhmm(rt.sun.time)}`;
   switch(rt.key){
-    case "shop": return `営業中 ${i.shops}軒`;
+    case "shop": return `営業中 ${i.shopsReal}軒`;
     case "cafe": return `カフェ ${i.cafes}軒`; case "bakery": return `パン屋 ${i.bakeries}軒`; case "bar": return `バー・居酒屋 ${i.bars}軒`; case "sight": return `名所 ${i.sights}か所`; case "green": return `公園 ${i.greens}か所`;
     case "water": return `水辺 ${Math.round(i.water*100)}%`; case "hill": case "flat": return `登り ${Math.round(i.asc)}m`;
     default: return rt.endPoi && rt.endPoi.name ? rt.endPoi.name : THEMES[rt.key].desc; } }
@@ -1202,6 +1294,9 @@ function detailHTML(rt){
   const notes=[];
   if(i && rt.key==="hill" && range<8) notes.push(`この周辺は平坦です（高低差 約${Math.round(range)}m）。橋や歩道橋の上り下りが中心になります。`);
   if(!rt.shared && rt.key!=="direct" && Math.abs(dev)>15) notes.push("道の形の都合で、目標から少しずれています。");
+  if(i && (rt.key==="bakery" || rt.key==="cafe") && lastRun){ const all = lastRun.D.cats.shopAll.filter(p=>p.name && p.code===(rt.key==="bakery"?7:2))
+      .sort((a,b)=>Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y)); const open = new Set(lastRun.D.cats[rt.key].map(p=>p.name));
+    if(all.length) notes.push(`地図データにある近くの${rt.key==="bakery"?"パン屋":"カフェ"}（近い順）: ${all.slice(0,8).map(p=>p.name+(open.has(p.name)?"":"［時間外］")).join("、")}${all.length>8?` ほか${all.length-8}軒`:""}。載っていないお店は地図データ（OpenStreetMap）に未登録です。`); }
   if(rt.sun){ const diff=Math.round((rt.sun.time - rt.sun.reach)/60000), ev = rt.sun.kind==="set"?"日の入り":"日の出";
     notes.push(diff>=0 ? `スポットに${hhmm(rt.sun.reach)}ごろ着きます（${ev} ${hhmm(rt.sun.time)}の${diff}分前）。${rt.sun.kind==="set"?"西南西":"東南東"}の方角を見てください。`
                         : `スポットに着くのは${ev}（${hhmm(rt.sun.time)}）の${-diff}分後です。${-diff}分早く出発すると間に合います。`); }
@@ -1228,6 +1323,7 @@ function detailHTML(rt){
     <div class="hl">${hhmm(walkCtx.depart)}出発 → <b>${hhmm(arrive)}ごろ${mode==="loop"?"に戻る":"に到着"}</b></div>
     ${i?spark(i.el, th.color):""}
     ${tags}
+    ${i && i.rain ? `<div class="rain">${esc(rainText(i.rain))}</div>` : ""}
     ${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}
     <div class="stops"><span class="lbl">Googleマップの経由地</span>${stopsHTML(rt)}</div>
     <a class="nav" href="${gmapsLink(rt)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 21 3l-8 18-2-8-8-2Z"/></svg>Googleマップでナビ開始</a>
@@ -1237,6 +1333,10 @@ function detailHTML(rt){
       <button type="button" class="btn2${logged?" on":""}" data-act="walked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>${logged?"記録済み":"歩いた"}</button>
     </div>
     <div class="hl">Googleマップには上の番号の地点をスポット名で、この順番で渡します（名前のない地点だけ住所表示）。経由地が4つ以上あるときは、Googleマップのアプリで開いてください（ブラウザ版は3つまでしか使えません）。</div>`; }
+function rainText(r){
+  const sh = r.shelters.length ? ` 雨宿り候補: ${r.shelters.map(s=>`${s.name}（${s.kind}・約${Math.round(s.d/10)*10}m）`).join("、")}` : "";
+  if(r.atStart) return `出発時から雨の予報です（${r.pr}mm/時・降水確率${r.pop??"-"}%）。傘を持っていきましょう。`+sh;
+  return `${hhmm(r.time)}ごろ（出発から約${r.startMin}分）、${r.near?r.near+"付近":"ルートの途中"}で雨が降り始める予報です（${r.pr}mm/時）。地図の「雨」の地点です。`+sh; }
 function stopsHTML(rt){
   const st = stopsFor(rt), oneWay = mode==="one";
   const items = st.map((s,i)=>`<li><span class="no" style="--c:${THEMES[rt.key].color}">${oneWay && i===st.length-1 ? "着" : i+1}</span>${esc(s.label)}</li>`);
@@ -1281,6 +1381,8 @@ function select(key, scrollToMap){
   if(rt.info && rt.info.spots) for(const sp of rt.info.spots){ if(stopNamesSet.has(sp.name)) continue; const l=P.ll(sp);
     L.marker([l.lat,l.lon],{icon:L.divIcon({className:"",iconSize:[20,20],iconAnchor:[10,10],html:`<div class="spot-pin" style="--c:${sp.c}">${sp.g}</div>`})})
       .bindTooltip(sp.name).addTo(poiLayer); }
+  if(rt.info && rt.info.rain){ const r=rt.info.rain;
+    L.marker([r.pt.lat,r.pt.lon],{zIndexOffset:500,icon:L.divIcon({className:"",iconSize:[24,24],iconAnchor:[12,12],html:'<div class="rain-pin">雨</div>'})}).bindTooltip(`${hhmm(r.time)}ごろ雨`).addTo(poiLayer); }
   st.forEach((s,i)=>{ const lab = mode==="one" && i===st.length-1 ? "着" : String(i+1);
     L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div class="wp-pin" style="--c:${THEMES[key].color}">${lab}</div>`}),interactive:true})
       .bindTooltip(s.label).addTo(poiLayer); });
@@ -1442,7 +1544,8 @@ function init(){
   const hadUrl = !!location.search && location.search.length>1;
   applyUrl();
   if(!hadUrl){ const pick=todayPick(); setTimeout(async()=>{ await run({only:[pick.key], today:pick});
-    if(!results.length && pick.key==="sun") run({only:["water"], today:{key:"water", why:pick.why}}); }, 400); }
+    if(!results.length){ const fb = pick.key==="sun" ? "water" : "green";
+      run({only:[fb], today:{key:fb, why: pick.key==="sun" ? pick.why : `${pick.why}…の予定でしたが、今は開いているお店が少ないので公園・緑のルートにしました`}}); } }, 400); }
 }
 
 /* ---------- current location ---------- */
@@ -1500,7 +1603,7 @@ function setWalkCtx(target){
   walkCtx = {depart, mid, arrive, dark: mid < sun.rise || mid > new Date(sun.set.getTime()+15*60000), sun}; }
 function updateTimeCtx(){
   if(!$("#timeCtx")) return;
-  setWalkCtx(targetMeters());
+  setWalkCtx(targetMeters()); refreshWeather();
   const s=walkCtx.sun;
   const m = walkCtx.mid;
   if(m > s.set){ // after sunset: show tomorrow's sunrise
