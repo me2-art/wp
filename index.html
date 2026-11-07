@@ -331,7 +331,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-5</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-6</div>
   </aside>
 </div>
 
@@ -1454,9 +1454,11 @@ function eatsHTML(rt){
   const i=rt.info; if(!i || !i.eats || !i.eats.length) return "";
   const want = rt.key==="cafe" ? i.eats.filter(e=>e.code===2) : rt.key==="bar" ? i.eats.filter(e=>e.code===3) : i.eats;
   const list = (want.length ? want : i.eats).slice(0,6);
+  // "23:20ごろ通過 → 4:30まで入店OK（あと5時間10分）": pass time, the latest time you can still go in, and the slack
+  const span = m => m>=60 ? `${Math.floor(m/60)}時間${m%60?m%60+"分":""}` : `${m}分`;
   const when = e => { if(!e.pass) return ""; const t = `${hhmm(e.pass)}ごろ通過`; if(!e.last) return t;
-    const left = Math.round((e.last - e.pass)/60000);
-    return `${t}・${e.lo?"L.O.":"入店目安"} ${hhmm(e.last)}` + (left<=15 ? `<b class="soon">まもなく${e.lo?"L.O.":"閉店"}</b>` : ""); };
+    const left = Math.max(0, Math.round((e.last - e.pass)/60000));
+    return `${t} → ${hhmm(e.last)}まで入店OK${e.lo?"（ラストオーダー）":"（閉店30分前）"}・あと${span(left)}` + (left<=15 ? `<b class="soon">急いで</b>` : ""); };
   return `<div class="eats"><span class="lbl">ルート沿いの、通る時間に入れる飲食店</span><ul>${list.map(e=>`<li><div class="r1"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.name)}</a><span>${esc(e.genre||"")}${e.budget?"・"+esc(e.budget):""}</span></div><div class="r2">${when(e)}</div></li>`).join("")}</ul>
     <a class="credit" href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a></div>`; }
 function rainText(r){
