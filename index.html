@@ -200,7 +200,10 @@ details.more[open] summary{margin-bottom:8px}
 .eats{display:flex;flex-direction:column;gap:6px}
 .eats .lbl{font-size:10px;letter-spacing:.06em;color:var(--muted)}
 .eats ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.eats li{display:flex;gap:8px;align-items:baseline;font-size:13px;min-width:0}
+.eats li{display:flex;flex-direction:column;gap:1px;font-size:13px;min-width:0}
+.eats .r1{display:flex;gap:8px;align-items:baseline;min-width:0}
+.eats .r2{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.eats .soon{margin-left:6px;font-size:10px;font-weight:700;color:var(--warn)}
 .eats li a{color:var(--ink);font-weight:500;text-decoration:underline;text-decoration-color:var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .eats li span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .eats .credit{font-size:10px;color:var(--muted)}
@@ -328,7 +331,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-4</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-5</div>
   </aside>
 </div>
 
@@ -774,8 +777,17 @@ function hpWeek(open, close){
     for(const m of t.matchAll(/([月火水木金土日])\s*[～〜~\-ー]\s*([月火水木金土日])/g)){ let a=D7.indexOf(m[1]), b=D7.indexOf(m[2]); for(let k=a;;k=(k+1)%7){ out.add(k); if(k===b) break; } }
     for(const ch of t.replace(/([月火水木金土日])\s*[～〜~\-ー]\s*([月火水木金土日])/g,"")) if(D7.includes(ch)) out.add(D7.indexOf(ch));
     return out; };
-  const timesOf = t => { const iv=[]; for(const m of t.replace(/（[^）]*）|\([^)]*\)/g,"").matchAll(/(\d{1,2})[:：](\d{2})\s*[～〜~\-ー]\s*(翌)?\s*(\d{1,2})[:：](\d{2})/g)){
-      const a=+m[1]*60+ +m[2]; let b=+m[4]*60+ +m[5]; if(m[3] || b<=a) b+=1440; iv.push([a,b]); } return iv; };
+  const RANGE = /(\d{1,2})[:：](\d{2})\s*[～〜~\-ー]\s*(翌)?\s*(\d{1,2})[:：](\d{2})/g;
+  const loIn = (txt, kind, a) => { const re = kind==="food" ? /(?:料理|フード|食事)\s*(?:L\.?\s*O\.?|ラストオーダー)\s*[:：]?\s*(翌)?\s*(\d{1,2})[:：](\d{2})/
+      : kind==="drink" ? /(?:ドリンク|飲み物)\s*(?:L\.?\s*O\.?|ラストオーダー)\s*[:：]?\s*(翌)?\s*(\d{1,2})[:：](\d{2})/
+      : /(?:L\.?\s*O\.?|ラストオーダー)\s*[:：]?\s*(翌)?\s*(\d{1,2})[:：](\d{2})/;
+    const m = txt.match(re); if(!m) return null; let v=+m[2]*60+ +m[3]; if(m[1] || v<a) v+=1440; return v; };
+  const timesOf = t => { const iv=[], ms=[...t.matchAll(RANGE)];
+    ms.forEach((m,k)=>{ const a=+m[1]*60+ +m[2]; let b=+m[4]*60+ +m[5]; if(m[3] || b<=a) b+=1440;
+      const tail = t.slice(m.index+m[0].length, k+1<ms.length ? ms[k+1].index : t.length);   // "（料理L.O. 22:00 ドリンクL.O. 22:30）"
+      let f = loIn(tail,"food",a), d = loIn(tail,"drink",a); if(f===null && d===null){ const g=loIn(tail,"any",a); f=g; d=g; }
+      iv.push([a, b, f!==null && f<=b ? f : null, d!==null && d<=b ? d : null]); });
+    return iv; };
   const week = Array(7).fill(null);
   const text = (open||"").replace(/\s+/g," ");
   const segs = [...text.matchAll(/((?:[月火水木金土日祝前～〜~\-ー、,・\s]|曜日?|祝日|祝前日)+)\s*[:：]\s*/g)];
@@ -786,6 +798,22 @@ function hpWeek(open, close){
   if(week.every(x=>x===null)) return null;
   if(close && !/無休|なし/.test(close)) for(const d of daysOf(close.split(/[（(]/)[0])) week[d]=[];
   return week; }
+const minsOf = d => d.getHours()*60 + d.getMinutes();
+function availAt(p, when){
+  const mins=minsOf(when), dow=(when.getDay()+6)%7, prev=(dow+6)%7;
+  if(p.hp && p.week){
+    for(const [w,off] of [[p.week[dow],0],[p.week[prev],1440]]) if(w) for(const iv of w){
+      const m = mins+off; if(m < iv[0] || m >= iv[1]) continue;                       // not open yet / already closed
+      const lo = p.code===3 ? (iv[3] ?? iv[2]) : (iv[2] ?? iv[3]);                    // bars: drink L.O., others: food L.O.
+      const last = lo ?? (iv[1]-30);                                                  // no L.O. given → 30 min before closing
+      if(m > last) return null;
+      return {last: new Date(when.getTime()+(last-m)*60000), lo: lo!==null, open: new Date(when.getTime()-(m-iv[0])*60000)}; }
+    return null; }
+  // no hours known: usual hours for the type, and still open 30 minutes later
+  const ok = isOpen(p.oh||"", SHOP_HOURS[p.code], when) && isOpen(p.oh||"", SHOP_HOURS[p.code], new Date(when.getTime()+30*60000));
+  return ok ? {last:null, lo:false} : null; }
+// candidate for route design: usable at some point during the walk (exact check per shop happens after routing)
+function usableDuring(p){ return [walkCtx.depart, walkCtx.mid, walkCtx.arrive].some(t=>!!availAt(p,t)); }
 function hpOpen(p, when){
   const mins=when.getHours()*60+when.getMinutes(), dow=(when.getDay()+6)%7, prev=(dow+6)%7;
   if(!p.week) return inIv(SHOP_HOURS[p.code], mins) || inIv(SHOP_HOURS[p.code], mins+1440);
@@ -799,7 +827,7 @@ async function loadPOIs(P, R, hpP){
     const q = P.xy({lat:it[1], lon:it[2]}); if(Math.hypot(q.x,q.y)>lim) continue;
     const cat = CATS[it[0]], p = {x:q.x, y:q.y, lat:it[1], lon:it[2], name:it[3]||"", code:it[4]||0, oh:it[5]||"", cat};
     if(cat==="shop"){ cats.shopAll.push(p);
-      if(isOpen(p.oh, SHOP_HOURS[p.code], mid)){ cats.shop.push(p); if(p.code!==4 && p.code!==5) cats.shopReal.push(p);   // コンビニ・スーパーは商店街に数えない
+      if(usableDuring(p)){ cats.shop.push(p); if(p.code!==4 && p.code!==5) cats.shopReal.push(p);   // コンビニ・スーパーは商店街に数えない
         if(p.code===2) cats.cafe.push(p); else if(p.code===7) cats.bakery.push(p); else if(p.code===3) cats.bar.push(p); }
       continue; }
     if(cat==="sight" && p.code===1 && !isOpen(p.oh, [[600,1020]], mid)) continue;   // museums: 10-17 unless tagged
@@ -816,7 +844,7 @@ async function loadPOIs(P, R, hpP){
     const dup = p => (p.code===1||p.code===2||p.code===3||p.code===6) && g.near(p.x,p.y,25).length>0;
     for(const k of ["shop","shopReal","shopAll","cafe","bar"]) cats[k] = cats[k].filter(p=>!dup(p));
     for(const p of hpPts){ cats.shopAll.push(p);
-      if(hpOpen(p, mid)){ cats.shop.push(p); cats.shopReal.push(p); if(p.code===2) cats.cafe.push(p); else if(p.code===3) cats.bar.push(p); } }
+      if(usableDuring(p)){ cats.shop.push(p); cats.shopReal.push(p); if(p.code===2) cats.cafe.push(p); else if(p.code===3) cats.bar.push(p); } }
     cats.hpCount = hpPts.length; }
   // dedupe stations by name
   const seen=new Set(); cats.station = cats.station.filter(st=>st.name && !seen.has(st.name) && seen.add(st.name));
@@ -1122,9 +1150,11 @@ async function analyze(rt, D, P){
   const shops = along("shop",35), shopsAll = along("shopAll",35), sights = along("sight",45), greens = along("green",120);
   const streets = along("street",30);
   const allStops = pickStops(rt, samples, sights, greens, stopNames(rt, D), streets);
-  const shopsNear = along("shop",30);
+  const passAt = i => new Date(walkCtx.depart.getTime() + (i*25/WALK_MPM)*60000);
+  const usable = list => list.filter(p=>{ const a = availAt(p, passAt(p._i)); if(a){ p._pass = passAt(p._i); p._last = a.last; p._lo = a.lo; } return !!a; });
+  const shopsNear = usable(along("shop",30));
   const spots = spotsAlong(samples, sights, greens, shopsNear, streets);
-  const eats = shopsNear.filter(p=>p.hp).slice(0,40).map(p=>({name:p.name, genre:p.genre, url:p.url, budget:p.budget, code:p.code}));
+  const eats = shopsNear.filter(p=>p.hp).slice(0,40).map(p=>({name:p.name, genre:p.genre, url:p.url, budget:p.budget, code:p.code, pass:p._pass, last:p._last, lo:p._lo}));
   const cells = new Set(samples.map(q=>{ const l=P.ll(q); return cellKey(l.lat,l.lon); }));
 
   const nearWater = samples.filter(q=>D.grids.water.near(q.x,q.y,100).length).length/samples.length;
@@ -1136,7 +1166,7 @@ async function analyze(rt, D, P){
   const pts = resample(xy, L/(n-1)).slice(0,300).map(q=>P.ll(q));
   let el=[]; try{ el = await elevations(pts); }catch(e){ el=[]; }
   const asc = climbOf(el);
-  const cafes = along("cafe",35).length, bakeries = along("bakery",35).length, bars = along("bar",35).length, shopsReal = along("shopReal",35).length;
+  const cafes = usable(along("cafe",35)).length, bakeries = usable(along("bakery",35)).length, bars = usable(along("bar",35)).length, shopsReal = usable(along("shopReal",35)).length;
   return {allStops, spots, eats, cafes, bakeries, bars, shopsReal, rain: rainOn(rt, D, P), shops:shops.length, shopsAll:shopsAll.length, cells, sights:sights.length, greens:greens.length, water:nearWater, named,
           el, asc, emin: el.length?Math.min(...el):0, emax: el.length?Math.max(...el):0}; }
 
@@ -1179,7 +1209,7 @@ function rainOn(rt, D, P){
   for(let i=1;i<xy.length;i++){ const sg=dist(xy[i-1],xy[i]); if(acc+sg>=atM){ const f=(atM-acc)/(sg||1); pt={x:xy[i-1].x+(xy[i].x-xy[i-1].x)*f, y:xy[i-1].y+(xy[i].y-xy[i-1].y)*f}; break; } acc+=sg; pt=xy[i]; }
   let near=null, nd=1e9; for(const cat of ["station","sight","street","green"]) for(const q of D.grids[cat].near(pt.x,pt.y,400)) if(q.name){ const d=dist(q,pt); if(d<nd){ nd=d; near=q.name; } }
   const sh=[];
-  for(const q of D.grids.cafe.near(pt.x,pt.y,350)) if(q.name) sh.push({name:q.name, kind:"カフェ", d:dist(q,pt)});
+  for(const q of D.grids.cafe.near(pt.x,pt.y,350)) if(q.name && availAt(q, begin)) sh.push({name:q.name, kind:"カフェ", d:dist(q,pt)});
   for(const q of D.grids.station.near(pt.x,pt.y,500)) sh.push({name:q.name, kind:"駅", d:dist(q,pt)});
   const kon = D.grids.shop.near(pt.x,pt.y,250).filter(q=>q.code===4).sort((a,b)=>dist(a,pt)-dist(b,pt))[0];
   if(kon) sh.push({name:"コンビニ", kind:"傘も買える", d:dist(kon,pt)});
@@ -1424,7 +1454,10 @@ function eatsHTML(rt){
   const i=rt.info; if(!i || !i.eats || !i.eats.length) return "";
   const want = rt.key==="cafe" ? i.eats.filter(e=>e.code===2) : rt.key==="bar" ? i.eats.filter(e=>e.code===3) : i.eats;
   const list = (want.length ? want : i.eats).slice(0,6);
-  return `<div class="eats"><span class="lbl">ルート沿いの営業中の飲食店</span><ul>${list.map(e=>`<li><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.name)}</a><span>${esc(e.genre||"")}${e.budget?"・"+esc(e.budget):""}</span></li>`).join("")}</ul>
+  const when = e => { if(!e.pass) return ""; const t = `${hhmm(e.pass)}ごろ通過`; if(!e.last) return t;
+    const left = Math.round((e.last - e.pass)/60000);
+    return `${t}・${e.lo?"L.O.":"入店目安"} ${hhmm(e.last)}` + (left<=15 ? `<b class="soon">まもなく${e.lo?"L.O.":"閉店"}</b>` : ""); };
+  return `<div class="eats"><span class="lbl">ルート沿いの、通る時間に入れる飲食店</span><ul>${list.map(e=>`<li><div class="r1"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.name)}</a><span>${esc(e.genre||"")}${e.budget?"・"+esc(e.budget):""}</span></div><div class="r2">${when(e)}</div></li>`).join("")}</ul>
     <a class="credit" href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a></div>`; }
 function rainText(r){
   const sh = r.shelters.length ? ` 雨宿り候補: ${r.shelters.map(s=>`${s.name}（${s.kind}・約${Math.round(s.d/10)*10}m）`).join("、")}` : "";
