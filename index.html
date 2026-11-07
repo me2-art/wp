@@ -328,7 +328,7 @@ details.more[open] summary{margin-bottom:8px}
       <div class="log-list" id="logList"></div>
     </section>
 
-    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-3</div>
+    <div class="foot">地図 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>（お店・名所も地図データから）／ 道路: FOSSGIS OSRM ／ 飲食店: <a href="https://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパーグルメ Webサービス</a>（中継サーバー設定時）／ 天気: Open-Meteo ／ 標高: 国土地理院 数値標高モデル（5m・10mメッシュ）。距離は徒歩ルートの実距離、カロリーは目安です。<br>バージョン 11/07-4</div>
   </aside>
 </div>
 
@@ -958,6 +958,9 @@ async function designVisitRoute(key, D, P, target, opt={}){
   let pick = pool.filter(p=>angDiff(brg(p),bestT)<=50).sort((a,b)=>Math.hypot(b.x,b.y)-Math.hypot(a.x,a.y));
   // keep up to 3, spread out (≥250 m apart)
   const chosen=[]; for(const p of pick){ if(chosen.length>=3) break; if(chosen.every(q=>dist(p,q)>=250)) chosen.push(p); }
+  const minShops = key==="bakery" ? 2 : 1;   // パン屋「めぐり」は2軒以上
+  if(chosen.length < minShops){ for(const p of pick){ if(chosen.length>=minShops) break; if(!chosen.includes(p) && chosen.every(q=>dist(p,q)>=80)) chosen.push(p); } }
+  if(chosen.length < minShops) return null;
   const order = list => oneWay ? [...list].sort((a,b)=>Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y)) : [...list].sort((a,b)=>angDiff(brg(a),bestT-90)-angDiff(brg(b),bestT-90));
   let list = order(chosen), stretch = 0, best=null;
   for(let it=0; it<4; it++){
@@ -969,7 +972,7 @@ async function designVisitRoute(key, D, P, target, opt={}){
     if(!best || Math.abs(err)<Math.abs(best.err)) best={...res, err:Math.abs(err), wps};
     if(Math.abs(err)<0.12) break;
     if(err<0){ stretch += Math.max(150, (target-res.dist)/(oneWay?1.2:2.4)); }
-    else if(list.length>1 && stretch===0){ list = order(list.filter(p=>p!==far)); }   // too long: drop the farthest shop
+    else if(list.length>minShops && stretch===0){ list = order(list.filter(p=>p!==far)); }   // too long: drop the farthest shop (keep the minimum)
     else stretch = Math.max(0, stretch - (res.dist-target)/(oneWay?1.2:2.4));
   }
   return best ? {key, ...best, theta:bestT, endPoi:null} : null; }
@@ -1188,7 +1191,7 @@ function rainOn(rt, D, P){
 function mismatch(rt){ const i=rt.info; if(!i) return null;
   if(rt.key==="shop" && i.shopsReal<5) return "商店街・グルメ";
   if(rt.key==="cafe" && i.cafes<1) return "カフェ休憩つき";
-  if(rt.key==="bakery" && i.bakeries<1) return "パン屋めぐり";
+  if(rt.key==="bakery" && i.bakeries<2) return "パン屋めぐり";
   if(rt.key==="bar" && i.bars<2) return "夜の飲み歩き";
   return null; }
 let routeErr=null, lastRun=null;
